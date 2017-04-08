@@ -11,13 +11,15 @@ from gym import utils, spaces
 from gym_gazebo.envs import gazebo_env
 from gym.utils import seeding
 
-from mavros_msgs.msg import OverrideRCIn
+from mavros_msgs.msg import OverrideRCIn, ParamValue
 from sensor_msgs.msg import LaserScan, NavSatFix
 from std_msgs.msg import Float64
 from gazebo_msgs.msg import ModelStates
 
-from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
+from mavros_msgs.srv import CommandBool, CommandTOL, SetMode, ParamSet, ParamGet
 from std_srvs.srv import Empty
+
+import pdb
 
 
 class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
@@ -37,45 +39,35 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             alt = altitude
             err = alt * 0.1 # 10% error
 
-            #pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=10)
-
-            #msg = OverrideRCIn()
-            #msg.channels[0] = 0 # Roll
-            #msg.channels[1] = 0 # Pitch
-            #msg.channels[2] = 1500 # Throttle
-            #msg.channels[3] = 0    # Yaw
-            #msg.channels[4] = 0
-            #msg.channels[5] = 0
-            #msg.channels[6] = 0
-            #msg.channels[7] = 0
-            #self.pub.publish(msg)
-
+            rospy.loginfo('Changing mode to GUIDED')
             # Set GUIDED mode
-            rospy.wait_for_service('mavros/set_mode')
+            rospy.wait_for_service('/mavros/set_mode')
             try:
                 self.mode_proxy(0,'GUIDED')
             except rospy.ServiceException, e:
-                print ("mavros/set_mode service call failed: %s"%e)
+                print ("/mavros/set_mode service call failed: %s"%e)
 
-            # Wait 2 seconds
-            time.sleep(2)
+            time.sleep(1)
 
+            rospy.loginfo('ARMing throttle')
             # Arm throttle
-            rospy.wait_for_service('mavros/cmd/arming')
+            rospy.wait_for_service('/mavros/cmd/arming')
             try:
                 self.arm_proxy(True)
             except rospy.ServiceException, e:
-                print ("mavros/set_mode service call failed: %s"%e)
+                print ("/mavros/set_mode service call failed: %s"%e)
 
+            time.sleep(1)
+            
+            rospy.loginfo('TAKEOFF to %d meters', alt)
             # Takeoff
-            rospy.wait_for_service('mavros/cmd/takeoff')
+            rospy.wait_for_service('/mavros/cmd/takeoff')
             try:
                 self.takeoff_proxy(0, 0, 0, 0, alt) # 1m altitude
             except rospy.ServiceException, e:
-                print ("mavros/cmd/takeoff service call failed: %s"%e)
+                print ("/mavros/cmd/takeoff service call failed: %s"%e)
 
-            # Wait 3 seconds
-            time.sleep(3)
+            time.sleep(alt)
 
             alt_msg = None
             while alt_msg is None:
@@ -98,16 +90,54 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             else:
                 print "Takeoff failed, retrying..."
 
+        rospy.wait_for_service('/mavros/param/get')
+        gcs = self.param_get_proxy('SYSID_MYGCS').value.integer
+        if gcs != 1:
+            # Set Mavros as GCS
+            rospy.wait_for_service('/mavros/param/set')
+            try:
+                info = ParamSet()
+                info.param_id = 'SYSID_MYGCS'
+
+                val = ParamValue()
+                val.integer = 1
+                val.real = 0.0
+                info.value = val
+
+                self.param_set_proxy(info.param_id, info.value)
+
+                rospy.loginfo('Changed SYSID_MYGCS from %d to %d', gcs, val.integer)
+            except rospy.ServiceException, e:
+                print ("/mavros/set_mode service call failed: %s"%e)
+
+        time.sleep(1)
+
+        self.msg = OverrideRCIn()
+        self.msg.channels[0] = 0 # Roll
+        self.msg.channels[1] = 0 # Pitch
+        self.msg.channels[2] = 1500 # Throttle
+        self.msg.channels[3] = 0    # Yaw
+        self.msg.channels[4] = 0
+        self.msg.channels[5] = 0
+        self.msg.channels[6] = 0
+        self.msg.channels[7] = 0
+        rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
+        self.pub.publish(self.msg)
+
+        time.sleep(1)
+
+        rospy.loginfo('Changing mode to ALT_HOLD')
         # Set ALT_HOLD mode
-        rospy.wait_for_service('mavros/set_mode')
+        rospy.wait_for_service('/mavros/set_mode')
         try:
             self.mode_proxy(0,'ALT_HOLD')
         except rospy.ServiceException, e:
-            print ("mavros/set_mode service call failed: %s"%e)
+            print ("/mavros/set_mode service call failed: %s"%e)
 
     def _launch_apm(self):
         sim_vehicle_sh = str(os.environ["ARDUPILOT_PATH"]) + "/Tools/autotest/sim_vehicle.sh"
-        subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo","-v","ArduCopter"])
+        # sim_vehicle_sh = '/home/shohin/Libraries/simulation/ardupilot/Tools/autotest/sim_vehicle.sh'
+        subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo","-v","ArduCopter"]) # 
 
     def _pause(self, msg):
         programPause = raw_input(str(msg))
@@ -144,19 +174,37 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 
         self.max_distance = 1.6
 
-        self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=10)
-
-        #self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-
-        #self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
-
+        # self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
+        # self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
+        self.mode_proxy = rospy.ServiceProxy('/mavros/set_mode', SetMode)
+        self.param_set_proxy = rospy.ServiceProxy('/mavros/param/set', ParamSet)
+        self.param_get_proxy = rospy.ServiceProxy('/mavros/param/get', ParamGet)
+        self.arm_proxy = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
+        self.takeoff_proxy = rospy.ServiceProxy('/mavros/cmd/takeoff', CommandTOL)
+        self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=1)
+        self.alt_sub = rospy.Subscriber('/mavros/global_position/rel_alt', Float64, self.alt_callback)
 
-        self.mode_proxy = rospy.ServiceProxy('mavros/set_mode', SetMode)
+        self.rtl_time = 5
+        self.reset_time = 3
+        self.disarm = False
 
-        self.arm_proxy = rospy.ServiceProxy('mavros/cmd/arming', CommandBool)
-        
-        self.takeoff_proxy = rospy.ServiceProxy('mavros/cmd/takeoff', CommandTOL)
+        # CANNOT SET. ERROR.
+        rospy.wait_for_service('/mavros/param/set')
+        try:
+            info = ParamSet()
+            info.param_id = 'RTL_CLIMB_MIN'
+
+            val = ParamValue()
+            val.integer = 2
+            val.real = 0.0
+            info.value = val
+
+            self.param_set_proxy(info.param_id, info.value)
+
+            rospy.loginfo('Changed RTL_CLIMB_MIN to %d', val.integer)
+        except rospy.ServiceException, e:
+            print ("/mavros/set_mode service call failed: %s"%e)
 
         countdown = 10
         while countdown > 0:
@@ -176,29 +224,29 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
         return discretized_ranges, done
 
     def _step(self, action):
-        msg = OverrideRCIn()
+        self.msg = OverrideRCIn()
 
         if action == 0: #FORWARD
-            msg.channels[0] = 1500 # Roll
-            msg.channels[1] = 1450 # Pitch
+            self.msg.channels[0] = 1500 # Roll
+            self.msg.channels[1] = 1450 # Pitch
         elif action == 1: #LEFT
-            msg.channels[0] = 1450 # Roll
-            msg.channels[1] = 1500 # Pitch
+            self.msg.channels[0] = 1450 # Roll
+            self.msg.channels[1] = 1500 # Pitch
         elif action == 2: #RIGHT
-            msg.channels[0] = 1550 # Roll
-            msg.channels[1] = 1500 # Pitch
+            self.msg.channels[0] = 1550 # Roll
+            self.msg.channels[1] = 1500 # Pitch
         elif action == 3: #BACKWARDS
-            msg.channels[0] = 1500 # Roll
-            msg.channels[1] = 1550 # Pitch
+            self.msg.channels[0] = 1500 # Roll
+            self.msg.channels[1] = 1550 # Pitch
 
-        msg.channels[2] = 1500  # Throttle
-        msg.channels[3] = 0     # Yaw
-        msg.channels[4] = 0
-        msg.channels[5] = 0
-        msg.channels[6] = 0
-        msg.channels[7] = 0
+        self.msg.channels[2] = 1500  # Throttle
+        self.msg.channels[3] = 0     # Yaw
+        self.msg.channels[4] = 0
+        self.msg.channels[5] = 0
+        self.msg.channels[6] = 0
+        self.msg.channels[7] = 0
 
-        self.pub.publish(msg)
+        self.pub.publish(self.msg)
     
         observation = self._get_position()
 
@@ -225,13 +273,15 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             os.system("kill -9 "+str(pid))
         
         grep_cmd = "ps -ef | grep ardupilot"
-        result = subprocess.check_output([grep_cmd], shell=True).split()
-        pid = result[1]
+        # result = subprocess.check_output([grep_cmd], shell=True).split()
+        # pid = result[1]
+        pid = os.popen(grep_cmd).read().split()[1]
         os.system("kill -9 "+str(pid))
 
         grep_cmd = "ps -af | grep sim_vehicle.sh"
-        result = subprocess.check_output([grep_cmd], shell=True).split()
-        pid = result[1]
+        # result = subprocess.check_output([grep_cmd], shell=True).split()
+        # pid = result[1]
+        pid = os.popen(grep_cmd).read().split()[1]
         os.system("kill -9 "+str(pid))  
 
         self._launch_apm()
@@ -268,17 +318,70 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
     def center_distance(self):
         return math.sqrt(self.diff_latitude**2 + self.diff_longitude**2)
 
+    def alt_callback(self, data):
+        if data.data < 0.3:
+            self.disarm = True
+
     def _reset(self):
         # Resets the state of the environment and returns an initial observation.
-        rospy.wait_for_service('/gazebo/reset_world')
+        rospy.loginfo('Changing mode to RTL')
+        # Set RTL mode
+        rospy.wait_for_service('/mavros/set_mode')
         try:
-            #reset_proxy.call()
-            self.reset_proxy()
+            self.mode_proxy(0,'RTL')
         except rospy.ServiceException, e:
-            print ("/gazebo/reset_world service call failed")
+            print ("/mavros/set_mode service call failed: %s"%e)
 
-        # Relaunch autopilot
-        self._relaunch_apm()
+        rospy.loginfo('Waiting to land')
+        time.sleep(self.rtl_time)
+        # alt_msg = None
+        # erlecopter_alt = float('inf')
+        # while erlecopter_alt > 0.3:
+        #     try:
+        #         alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
+        #         erlecopter_index = 0
+        #         for name in alt_msg.name:
+        #             if name == "erlecopter":
+        #                 break
+        #             else:
+        #                 erlecopter_index +=1
+        #         erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
+        #     except:
+        #         pass
+        while not self.disarm:
+            pass
+
+        rospy.loginfo('DISARMing throttle')
+        # Disrm throttle
+        rospy.wait_for_service('/mavros/cmd/arming')
+        try:
+            self.arm_proxy(False)
+            self.disarm = False
+        except rospy.ServiceException, e:
+            print ("/mavros/set_mode service call failed: %s"%e)
+
+        time.sleep(1)
+
+        self.msg.channels[2] = 0
+        rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
+        self.pub.publish(self.msg)
+
+        time.sleep(1)
+
+        rospy.loginfo('Changing mode to STABILIZE')
+        # Set STABILIZE mode
+        rospy.wait_for_service('/mavros/set_mode')
+        try:
+            self.mode_proxy(0,'STABILIZE')
+        except rospy.ServiceException, e:
+            print ("/mavros/set_mode service call failed: %s"%e)
+
+        time.sleep(1)
+
+        rospy.loginfo('Gazebo RESET')
+        self.reset_proxy()
+
+        time.sleep(self.reset_time)
 
         self._takeoff(2)
 
@@ -286,3 +389,6 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
         self.initial_longitude = None
         
         return self._get_position()
+
+# Param load command:
+# param load /home/shohin/Libraries/simulation/ardupilot/Tools/Frame_params/Erle-Copter.param

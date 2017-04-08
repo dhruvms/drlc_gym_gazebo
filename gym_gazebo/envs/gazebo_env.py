@@ -8,6 +8,8 @@ import subprocess
 from os import path
 
 from std_srvs.srv import Empty
+from mavros_msgs.msg import ParamValue
+from mavros_msgs.srv import ParamSet
 
 
 class GazeboEnv(gym.Env):
@@ -67,6 +69,23 @@ class GazeboEnv(gym.Env):
             self.gzclient_pid = 0
 
     def _close(self):
+        param_set_proxy = rospy.ServiceProxy('/mavros/param/set', ParamSet)
+
+        # Unset Mavros as GCS
+        rospy.wait_for_service('/mavros/param/set')
+        try:
+            info = ParamSet()
+            info.param_id = 'SYSID_MYGCS'
+
+            val = ParamValue()
+            val.integer = 255
+            val.real = 0.0
+            info.value = val
+
+            param_set_proxy(info.param_id, info.value)
+            rospy.loginfo('Changed SYSID_MYGCS to %d', val.integer) 
+        except rospy.ServiceException, e:
+            print ("/mavros/set_mode service call failed: %s"%e)
 
         # Kill gzclient, gzserver and roscore
         tmp = os.popen("ps -Af").read()

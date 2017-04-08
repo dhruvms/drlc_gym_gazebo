@@ -79,7 +79,7 @@ cd sophus
 mkdir build
 cd build
 cmake ..
-make
+make -j`nproc`
 sudo make install
 echo "## Sophus installed ##\n"
 
@@ -91,7 +91,7 @@ git clone https://github.com/erlerobot/ardupilot.git -b gazebo_udp
 git clone https://github.com/tridge/jsbsim.git
 cd jsbsim
 ./autogen.sh --enable-libraries
-make -j2
+make -j`nproc`
 sudo make install
 echo "## AMP/Ardupilot installed ##"
 
@@ -99,9 +99,9 @@ echo "## AMP/Ardupilot installed ##"
 cd ../../catkin_ws/src/
 vcs import < ../../gazebo.repos
 cd ..
-catkin_make --pkg mav_msgs
+catkin_make --pkg mav_msgs driver_base
 source devel/setup.bash
-catkin_make -j 1
+catkin_make -j `nproc`
 bash -c 'echo source `pwd`/devel/setup.bash >> ~/.bashrc'
 echo "## ROS workspace compiled ##"
 

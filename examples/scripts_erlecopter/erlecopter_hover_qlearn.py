@@ -5,6 +5,7 @@ import time
 import numpy
 import time
 import pandas
+import pdb
 
 import qlearn
 
@@ -28,9 +29,10 @@ if __name__ == '__main__':
 
     env = gym.make('GazeboErleCopterHover-v0')
 
-    outdir = '/tmp/gazebo_gym_experiments'
-    env.monitor.start(outdir, force=True, seed=None)
-    #plotter = LivePlot(outdir)
+    # outdir = '/tmp/gazebo_gym_experiments'
+    # env = gym.wrappers.Monitor(env, outdir, force=True)
+    # env.monitor.start(outdir, force=True, seed=None)
+    # plotter = LivePlot(outdir)
 
     last_time_steps = numpy.ndarray(0)
     max_number_of_steps = 1000
