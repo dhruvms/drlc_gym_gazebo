@@ -83,7 +83,11 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
                     break
                 else:
                     erlecopter_index +=1
-            erlecopter_alt = alt_msg.pose[erlecopter_index].position.z * 2
+            try:
+                erlecopter_alt = alt_msg.pose[erlecopter_index].position.z * 2
+            except:
+                erlecopter_alt = -1
+
             if erlecopter_alt > (alt - err):
                 takeoff_successful = True
                 print "Takeoff successful"
@@ -154,7 +158,8 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
         msg += "%sLoad Erle-Copter parameters in MavProxy console (sim_vehicle.sh):%s\n\n" % (BOLD, ENDC)
         msg += "MAV> param load %s\n\n" % (str(os.environ["ERLE_COPTER_PARAM_PATH"]))
         msg += "%sThen, press <Enter> here to launch Gazebo...%s\n\n%s" % (BOLD, ENDC,  LINE)
-        self._pause(msg)
+        # self._pause(msg)
+        time.sleep(3)
 
         # Launch the simulation with the given launchfile name
         gazebo_env.GazeboEnv.__init__(self, "GazeboErleCopterHover-v0.launch")    
@@ -193,7 +198,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
         rospy.wait_for_service('/mavros/param/set')
         try:
             info = ParamSet()
-            info.param_id = 'RTL_CLIMB_MIN'
+            info.param_id = 'RTL_ALT'
 
             val = ParamValue()
             val.integer = 2
@@ -324,43 +329,43 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 
     def _reset(self):
         # Resets the state of the environment and returns an initial observation.
-        rospy.loginfo('Changing mode to RTL')
-        # Set RTL mode
-        rospy.wait_for_service('/mavros/set_mode')
-        try:
-            self.mode_proxy(0,'RTL')
-        except rospy.ServiceException, e:
-            print ("/mavros/set_mode service call failed: %s"%e)
+        # rospy.loginfo('Changing mode to RTL')
+        # # Set RTL mode
+        # rospy.wait_for_service('/mavros/set_mode')
+        # try:
+        #     self.mode_proxy(0,'RTL')
+        # except rospy.ServiceException, e:
+        #     print ("/mavros/set_mode service call failed: %s"%e)
 
-        rospy.loginfo('Waiting to land')
-        time.sleep(self.rtl_time)
-        # alt_msg = None
-        # erlecopter_alt = float('inf')
-        # while erlecopter_alt > 0.3:
-        #     try:
-        #         alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
-        #         erlecopter_index = 0
-        #         for name in alt_msg.name:
-        #             if name == "erlecopter":
-        #                 break
-        #             else:
-        #                 erlecopter_index +=1
-        #         erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
-        #     except:
-        #         pass
-        while not self.disarm:
-            pass
+        # rospy.loginfo('Waiting to land')
+        # time.sleep(self.rtl_time)
+        # # alt_msg = None
+        # # erlecopter_alt = float('inf')
+        # # while erlecopter_alt > 0.3:
+        # #     try:
+        # #         alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
+        # #         erlecopter_index = 0
+        # #         for name in alt_msg.name:
+        # #             if name == "erlecopter":
+        # #                 break
+        # #             else:
+        # #                 erlecopter_index +=1
+        # #         erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
+        # #     except:
+        # #         pass
+        # while not self.disarm:
+        #     pass
 
-        rospy.loginfo('DISARMing throttle')
-        # Disrm throttle
-        rospy.wait_for_service('/mavros/cmd/arming')
-        try:
-            self.arm_proxy(False)
-            self.disarm = False
-        except rospy.ServiceException, e:
-            print ("/mavros/set_mode service call failed: %s"%e)
+        # rospy.loginfo('DISARMing throttle')
+        # # Disrm throttle
+        # rospy.wait_for_service('/mavros/cmd/arming')
+        # try:
+        #     self.arm_proxy(False)
+        #     self.disarm = False
+        # except rospy.ServiceException, e:
+        #     print ("/mavros/set_mode service call failed: %s"%e)
 
-        time.sleep(1)
+        # time.sleep(1)
 
         self.msg.channels[2] = 0
         rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
@@ -392,3 +397,4 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 
 # Param load command:
 # param load /home/shohin/Libraries/simulation/ardupilot/Tools/Frame_params/Erle-Copter.param
+# param load /home/vaibhav/madratman/projects/gym_gazebo_deps/simulation/ardupilot/Tools/Frame_params/Erle-Copter.param
