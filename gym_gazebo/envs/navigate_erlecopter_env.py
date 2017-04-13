@@ -236,9 +236,6 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		self._seed()
 
-
-		
-
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
 		return [seed]
@@ -257,9 +254,9 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		vel_cmd.twist.linear.x = speed*math.cos(action*(pi/10))
 		vel_cmd.twist.linear.y = speed*math.sin(action*(pi/10))
-
+		vel_cmd.twist.linear.z = 0
 		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
-
+		print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
 	
 		observation = self._get_frame()
@@ -297,85 +294,18 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		return observation, reward, is_terminal, {}	
 
-
-	# def _killall(self, process_name):
-	# 	pids = subprocess.check_output(["pidof",process_name]).split()
-	# 	for pid in pids:
-	# 		os.system("kill -9 "+str(pid))
-
-	# def _relaunch_apm(self):
-	# 	pids = subprocess.check_output(["pidof","ArduCopter.elf"]).split()
-	# 	for pid in pids:
-	# 		os.system("kill -9 "+str(pid))
-		
-	# 	grep_cmd = "ps -ef | grep ardupilot"
-	# 	result = subprocess.check_output([grep_cmd], shell=True).split()
-	# 	pid = result[1]
-	# 	os.system("kill -9 "+str(pid))
-
-	# 	grep_cmd = "ps -af | grep sim_vehicle.sh"
-	# 	result = subprocess.check_output([grep_cmd], shell=True).split()
-	# 	pid = result[1]
-	# 	os.system("kill -9 "+str(pid))  
-
-	# 	self._launch_apm()
-
-	# def _to_meters(self, n):
-	# 	return n * 100000.0
-
 	def _get_frame(self):
 		frame = None;
 		while frame is None:
 			try:
-				frame = rospy.wait_for_message('/camera/depth/image_raw',Image, timeout = 5)
+				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
 				frame = np.asarray(cv_image)
 				return frame
 			except:
 				raise ValueError('could not get frame')
 
-	# def center_distance(self):
-	# 	return math.sqrt(self.diff_latitude**2 + self.diff_longitude**2)
-
 	def _reset(self):
-		# Resets the state of the environment and returns an initial observation.
-		# rospy.loginfo('Changing mode to RTL')
-		# # Set RTL mode
-		# rospy.wait_for_service('/mavros/set_mode')
-		# try:
-		#     self.mode_proxy(0,'RTL')
-		# except rospy.ServiceException, e:
-		#     print ("/mavros/set_mode service call failed: %s"%e)
-
-		# rospy.loginfo('Waiting to land')
-		# time.sleep(self.rtl_time)
-		# # alt_msg = None
-		# # erlecopter_alt = float('inf')
-		# # while erlecopter_alt > 0.3:
-		# #     try:
-		# #         alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
-		# #         erlecopter_index = 0
-		# #         for name in alt_msg.name:
-		# #             if name == "erlecopter":
-		# #                 break
-		# #             else:
-		# #                 erlecopter_index +=1
-		# #         erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
-		# #     except:
-		# #         pass
-		# while not self.disarm:
-		#     pass
-
-		# rospy.loginfo('DISARMing throttle')
-		# # Disrm throttle
-		# rospy.wait_for_service('/mavros/cmd/arming')
-		# try:
-		#     self.arm_proxy(False)
-		#     self.disarm = False
-		# except rospy.ServiceException, e:
-		#     print ("/mavros/set_mode service call failed: %s"%e)
-
-		# time.sleep(1)
 
 		self.msg.channels[2] = 0
 		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
@@ -383,11 +313,11 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		time.sleep(1)
 
-		rospy.loginfo('Changing mode to STABILIZE')
-		# Set STABILIZE mode
+		rospy.loginfo('Changing mode to RTL')
+		# Set RTL mode
 		rospy.wait_for_service('/mavros/set_mode')
 		try:
-			self.mode_proxy(0,'STABILIZE')
+			self.mode_proxy(0,'RTL')
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
 
@@ -402,8 +332,6 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		
 		return self._get_frame()
 
-
-
 	# def _update_reward(self, data):
 	#     if len(data.contact_positions) >0:
 	#          self.b_collision = True
@@ -414,10 +342,10 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		else:
 			return True 
 
-
 	def discretize_observation(self,data,new_ranges):
+		# print data
 		discretized_ranges = []
-		min_range = 0.2
+		min_range = 0.5
 		done = False
 		mod = len(data.ranges)/new_ranges
 		for i, item in enumerate(data.ranges):

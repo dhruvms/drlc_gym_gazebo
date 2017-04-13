@@ -21,7 +21,7 @@ from std_srvs.srv import Empty
 
 import pdb
 
-class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
+class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
     def _takeoff(self, altitude):
         print "Waiting for mavros..."
         data = None
@@ -384,11 +384,11 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
         time.sleep(1)
 
-        rospy.loginfo('Changing mode to STABILIZE')
-        # Set STABILIZE mode
+        rospy.loginfo('Changing mode to RTL')
+        # Set RTL mode
         rospy.wait_for_service('/mavros/set_mode')
         try:
-            self.mode_proxy(0,'STABILIZE')
+            self.mode_proxy(0,'RTL')
         except rospy.ServiceException, e:
             print ("/mavros/set_mode service call failed: %s"%e)
 

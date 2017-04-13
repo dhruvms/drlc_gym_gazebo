@@ -21,12 +21,12 @@
   <arg name="verbose" default="false"/>
 
   <!-- Initial pose for the drone -->
-  <arg name="x" default="0.0"/> <!-- [m], positive to the North -->
+  <arg name="x" default="10.0"/> <!-- [m], positive to the North -->
   <arg name="y" default="0.0"/> <!-- [m], negative to the East -->
   <arg name="z" default="0.08"/> <!-- [m], positive Up -->
   <arg name="roll" default="0"/> <!-- [rad] -->
   <arg name="pitch" default="0"/> <!-- [rad] -->
-  <arg name="yaw" default="3.1415"/> <!-- [rad], negative clockwise -->
+  <arg name="yaw" default="0"/> <!-- [rad], negative clockwise -->
 
   <!-- send the robot XML to param server -->
   <param name="robot_description" command="
