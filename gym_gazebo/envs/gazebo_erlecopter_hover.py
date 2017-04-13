@@ -38,15 +38,15 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 
         while not takeoff_successful:
             diff = time.time() - start
-            if diff > 15.0:
-                rospy.loginfo('Changing mode to STABILIZE')
-                # Set STABILIZE mode
-                rospy.wait_for_service('/mavros/set_mode')
-                try:
-                    self.mode_proxy(0,'STABILIZE')
-                    start = time.time()
-                except rospy.ServiceException, e:
-                    print ("/mavros/set_mode service call failed: %s"%e)
+            # if diff > 15.0:
+            #     rospy.loginfo('Changing mode to STABILIZE')
+            #     # Set STABILIZE mode
+            #     rospy.wait_for_service('/mavros/set_mode')
+            #     try:
+            #         self.mode_proxy(0,'STABILIZE')
+            #         start = time.time()
+            #     except rospy.ServiceException, e:
+            #         print ("/mavros/set_mode service call failed: %s"%e)
 
             print "Taking off..."
             alt = altitude
@@ -60,7 +60,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             except rospy.ServiceException, e:
                 print ("/mavros/set_mode service call failed: %s"%e)
 
-            time.sleep(1)
+            time.sleep(0.5)
 
             rospy.loginfo('ARMing throttle')
             # Arm throttle
@@ -70,7 +70,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             except rospy.ServiceException, e:
                 print ("/mavros/set_mode service call failed: %s"%e)
 
-            time.sleep(1)
+            time.sleep(0.1)
             
             rospy.loginfo('TAKEOFF to %d meters', alt)
             # Takeoff
@@ -80,7 +80,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
             except rospy.ServiceException, e:
                 print ("/mavros/cmd/takeoff service call failed: %s"%e)
 
-            time.sleep(alt)
+            time.sleep(0.1)
 
             alt_msg = None
             while alt_msg is None:
@@ -384,7 +384,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
         rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
         self.pub.publish(self.msg)
 
-        time.sleep(1)
+        # time.sleep(1)
 
         rospy.loginfo('Changing mode to STABILIZE')
         # Set STABILIZE mode
