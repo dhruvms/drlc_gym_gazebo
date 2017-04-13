@@ -145,8 +145,6 @@ def create_model(window, input_shape, num_actions,
         model = [model_1]
     else:
         pass
-
-
     return model
 
 def getTiledAdvantage(a):
@@ -156,8 +154,6 @@ def getTiledAdvantage(a):
     a_mean = tf.tile(a_mean, [1,num_actions])
     a_norm = tf.subtract(a,a_mean)
     return a_norm 
-
-
 
 def getTiledValue(v):
     num_actions = K.params['actions']

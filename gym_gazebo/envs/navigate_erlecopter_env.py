@@ -27,7 +27,7 @@ from gazebo_msgs.msg import ContactState
 
 import tf
 
-class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
+class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 	def _takeoff(self, altitude):
 		print "Waiting for mavros..."
@@ -234,7 +234,7 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 		# else:
 		#     reward = 10 
 
-		return observation, reward, is_terminal, {}
+		return observation, reward, is_terminal, {}	
 
 
 	def _killall(self, process_name):
@@ -262,18 +262,16 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 	def _to_meters(self, n):
 		return n * 100000.0
 
-
 	def _get_frame(self):
 		frame = None;
 		while frame is None:
 			try:
 				frame = rospy.wait_for_message('/camera/depth/image_raw',Image, timeout = 5)
-
-		cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
-		frame = np.asarray(cv_image)
-
-		return frame
-
+				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
+				frame = np.asarray(cv_image)
+				return frame
+			except:
+				raise ValueError('could not get frame')
 
 	def center_distance(self):
 		return math.sqrt(self.diff_latitude**2 + self.diff_longitude**2)

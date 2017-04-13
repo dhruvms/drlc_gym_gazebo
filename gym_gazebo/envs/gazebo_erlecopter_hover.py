@@ -21,9 +21,7 @@ from std_srvs.srv import Empty
 
 import pdb
 
-
-class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
-
+class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
     def _takeoff(self, altitude):
         print "Waiting for mavros..."
         data = None
