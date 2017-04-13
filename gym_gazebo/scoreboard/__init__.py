@@ -68,5 +68,9 @@ add_task(
     group='gazebo',
     summary='Hover a point with Erle-Copter',
 )
-
+add_task(
+    id='GazeboErleCopterNavigate-v0',
+    group='gazebo',
+    summary='Hover a point with Erle-Copter',
+)
 registry.finalize()
