@@ -2,9 +2,6 @@
 
 import tensorflow as tf
 import semver
-import numpy as np
-import pdb
-import keras.backend as K
 
 def huber_loss(y_true, y_pred, max_grad=1.):
     """Calculate the huber loss.
@@ -26,10 +23,19 @@ def huber_loss(y_true, y_pred, max_grad=1.):
     tf.Tensor
       The huber loss.
     """
-    error = tf.abs(y_true - y_pred)
-    condition = tf.less_equal(error, max_grad)
-    loss = tf.where(condition, 0.5*tf.square(error), max_grad*error - 0.5*max_grad**2)
-    return loss
+    # logic
+    # if fabs(diff) <= delta:
+    #     return 0.5 * diff * diff.transpose;
+    # else:
+    #     return delta*(fabs(diff) - 0.5*delta);
+    
+    delta = max_grad # somewhere in piazza. does this need to be a tf constant
+    diff = tf.abs(y_true-y_pred)
+    huber_if_diff_less_than_delta = 0.5*tf.square(diff)
+    huber_if_diff_more_than_delta = delta*(diff - 0.5*delta)
+    is_diff_less_than_delta = tf.less_equal(diff, delta)
+    final = tf.where(is_diff_less_than_delta, huber_if_diff_less_than_delta, huber_if_diff_more_than_delta) 
+    return final
 
 def mean_huber_loss(y_true, y_pred, max_grad=1.):
     """Return mean huber loss.
@@ -51,6 +57,5 @@ def mean_huber_loss(y_true, y_pred, max_grad=1.):
     -------
     tf.Tensor
       The mean huber loss.
-    """
-    loss = huber_loss(y_true, y_pred, max_grad)
-    return tf.reduce_mean(loss)
+    """ 
+    return tf.reduce_mean(huber_loss(y_true, y_pred, max_grad)) # todo no need to specify axis right

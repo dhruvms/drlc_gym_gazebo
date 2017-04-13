@@ -1,8 +1,6 @@
-"Core classes."""
+"""Core classes."""
 
 import numpy as np
-import time
-import pdb
 
 class Sample:
     """Represents a reinforcement learning sample.
@@ -34,8 +32,11 @@ class Sample:
     is_terminal: boolean
       True if this action finished the episode. False otherwise.
     """
-    pass
-
+    def __init__(self, state, action, reward, is_terminal):
+        self.state = state
+        self.action = action
+        self.reward = reward
+        self.is_terminal = is_terminal
 
 class Preprocessor:
     """Preprocessor base class.
@@ -58,6 +59,9 @@ class Preprocessor:
     episode begins so that state doesn't leak in from episode to
     episode.
     """
+
+    def __init__(self):
+        raise NotImplementedError
 
     def process_state_for_network(self, state):
         """Preprocess the given state before giving it to the network.
@@ -82,7 +86,8 @@ class Preprocessor:
           modified in anyway.
 
         """
-        return state
+        raise NotImplementedError
+        # return state.astype('float32')        
 
     def process_state_for_memory(self, state):
         """Preprocess the given state before giving it to the replay memory.
@@ -107,7 +112,8 @@ class Preprocessor:
           modified in any manner.
 
         """
-        return state
+        raise NotImplementedError
+        # return state.astype('uint8')
 
     def process_batch(self, samples):
         """Process batch of samples.
@@ -127,7 +133,8 @@ class Preprocessor:
           Samples after processing. Can be modified in anyways, but
           the list length will generally stay the same.
         """
-        return samples
+        # return samples
+        raise NotImplementedError
 
     def process_reward(self, reward):
         """Process the reward.
@@ -146,7 +153,7 @@ class Preprocessor:
         processed_reward: float
           The processed reward
         """
-        return reward
+        raise NotImplementedError
 
     def reset(self):
         """Reset any internal state.
@@ -155,7 +162,6 @@ class Preprocessor:
         possible to do history snapshots.
         """
         pass
-
 
 class ReplayMemory:
     """Interface for replay memories.
@@ -196,7 +202,7 @@ class ReplayMemory:
     clear()
       Reset the memory. Deletes all references to the samples.
     """
-    def __init__(self, height, width, max_size, window_length):
+    def __init__(self, max_size):
         """Setup memory.
 
         You should specify the maximum size o the memory. Once the
@@ -208,130 +214,57 @@ class ReplayMemory:
         index where the next sample should be inserted in the list.
         """
         self.max_size = max_size
-        self.window_length = window_length
-        self.height = height
-        self.width = width
-
-        self.states = np.zeros((self.max_size, self.height, self.width), dtype='uint8')
-        self.actions = np.zeros(self.max_size, dtype='int32')
-        self.rewards = np.zeros(self.max_size, dtype='float32')
-        self.terminal = np.zeros(self.max_size, dtype='bool')
-
-        self.oldest = 0
-        self.newest = 0
-        self.size = 0
-
-        self.rand_gen = np.random.RandomState()
-
-        self.shape = [self.height, self.width, self.window_length]
-
-    def __len__(self):
-        return max(0, self.size - self.window_length + 1)
-
-    def __iter__(self):
-        raise NotImplementedError('This method should be overridden')
-
-    def __getitem__(self, index):
-        raise NotImplementedError('This method should be overridden')
+        self.experience = [] # list of tuples
+        self.index_for_insertion = 0
 
     def append(self, state, action, reward, is_terminal):
-        self.states[self.newest] = state
-        self.actions[self.newest] = action
-        self.rewards[self.newest] = reward
-        self.terminal[self.newest] = is_terminal
+        # pseudo ring buffer. Keep appending stuff till it reaches max size. 
+        # once, it has reach max size, we start to replace the oldest items. 
+        
+        new_sample = Sample(state, action, reward, is_terminal)
 
-        if self.size == self.max_size:
-            self.oldest = (self.oldest + 1) % self.max_size
-        else:
-            self.size += 1
-        self.newest = (self.newest + 1) % self.max_size
+        if len(self.experience) < self.max_size:
+            self.experience.append(new_sample)
+        else: # Replay Memory already has max size
+            if self.index_for_insertion==self.max_size:
+                self.index_for_insertion = 0
+            self.experience[self.index_for_insertion] = new_sample
+        self.index_for_insertion+=1
 
-    # What does this even do?!
-    def end_episode(self, final_state, is_terminal):
-        if np.array_equal(self.states[self.newest-1], final_state):
-            self.terminal[self.newest-1] = is_terminal
-        else:
-            print('Bad final state supplied.')
+    def end_episode(self):
+        # make the is_terminal (last element of tuple) of the last inserted (SAR+is_terminal) sequence True
+        self.experience[self.index_for_insertion-1].is_terminal = True
 
-    def sample(self, batch_size, indexes=None):
-        batch_states = np.zeros((batch_size, self.window_length + 1, self.height, self.width), dtype='uint8')
-        batch_actions = np.zeros((batch_size, 1), dtype='int32')
-        batch_rewards = np.zeros((batch_size, 1), dtype='float32')
-        batch_terminal = np.zeros((batch_size, 1), dtype='bool')
+    def sample(self, batch_size):
+        import random
+        # sample 32 indices. but don't sample 0,1,2. 
+        # TODO: if there is a terminal state in the middle of the sample, then resample
+        # if len(self.experience) < 1000000:
 
-        if not indexes:
-            count = 0
-            while count < batch_size:
-                index = self.rand_gen.randint(self.oldest, self.oldest + self.size - self.window_length)
-                all_frames = range(index, index + self.window_length + 1) # oldest to newest
-                # all_frames.reverse() # newest to oldest
+        # indices = random.sample(range(len(self.experience))[4:], batch_size)
+        indices = np.random.randint(4,len(self.experience),batch_size)
 
-                if self.terminal.take(all_frames[-2], mode='wrap'): 
-                    continue
+        # else:
+            # indices = random.sample(range(len(self.experience)), batch_size)
+        # print "indices {}".format(indices)
 
-                sample = self.states.take(all_frames, axis=0, mode='wrap')
-                
-                try:
-                    final_terminal = np.max(np.where(self.terminal.take(all_frames[0:-1], mode='wrap') == True)[0])
-                except ValueError:
-                    final_terminal = None
-                
-                if final_terminal != None:
-                    sample[0:final_terminal] = np.zeros((self.height, self.width))
-                
-                batch_states[count] = sample
-                batch_actions[count] = self.actions.take(all_frames[-2], mode='wrap')
-                batch_rewards[count] = self.rewards.take(all_frames[-2], mode='wrap')
-                batch_terminal[count] = self.terminal.take(all_frames[-1], mode='wrap')
-                
-                count += 1
+        # list of list of samples. (32 outside and 4 inside)
+        current_state_samples = [self.experience[index-4:index] for index in indices]   
+        next_state_samples = [self.experience[index-3:index+1] for index in indices]
 
-        # TODO: Check if this makes sens, and isn't too slow.
-        else:
-            for index in indexes:
-                all_frames = range(index, index + self.window_length + 1) # oldest to newest
+        # for index in indices:
+        #     current_state_samples = [self.experience[index-4:index]]
+        #     for (idx, each_list_of_samples) in enumerate(current_state_samples):
+        #         print "sample 0 :: index ", index, each_list_of_samples[0].state.shape
+        #         print "sample 1 :: index ", index, each_list_of_samples[1].state.shape
+        #         print "sample 2 :: index ", index, each_list_of_samples[2].state.shape
+        #         print "sample 3 :: index ", index, each_list_of_samples[3].state.shape
 
-                if self.terminal.take(all_frames[-2], mode='wrap'): 
-                    continue
-
-                sample = self.states.take(all_frames, axis=0, mode='wrap')
-                
-                try:
-                    final_terminal = np.where(self.terminal.take(all_frames[0:-2], mode='wrap') == True)[0][-1]
-                except IndexError:
-                    final_terminal = None
-
-                if final_terminal != None:
-                    sample[0:final_terminal+1] = np.zeros((self.height, self.width))
-
-                batch_states[count] = self.states.take(sample, axis=0, mode='wrap')
-                batch_actions[count] = self.actions.take(all_frames[-2], mode='wrap')
-                batch_rewards[count] = self.rewards.take(all_frames[-2], mode='wrap')
-                batch_terminal[count] = self.terminal.take(all_frames[-1], mode='wrap')
-                
-                count += 1
-
-        # Do we need something like this?
-        # try:
-        #   assert len(batch_states) == len(batch_actions) == len(batch_rewards) == len(batch_terminal)
-        # except:
-        #   raise AssertionError('Incorrect sampling - lists are of different lengths.')
-
-        batch_states = np.swapaxes(np.swapaxes(batch_states, 1, 3), 1, 2)
-
-        return batch_states, batch_actions, batch_rewards, batch_terminal
+        return {
+                    'current_state_samples':current_state_samples,
+                    'next_state_samples':next_state_samples
+                } 
 
     def clear(self):
-        self.states = np.zeros((self.max_size, self.height, self.width), dtype='uint8')
-        self.actions = np.zeros(self.max_size, dtype='int32')
-        self.rewards = np.zeros(self.max_size, dtype='float32')
-        self.terminal = np.zeros(self.max_size, dtype='bool')
-
-        del self.states
-        del self.actions
-        del self.rewards
-        del self.terminal
-
-        self.oldest = 0
-        self.newest = 0
-        self.size = 0
+        self.experience=[]
+        self.index_for_insertion = 0

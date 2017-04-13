@@ -6,9 +6,6 @@ from PIL import Image
 from deeprl_hw2 import utils
 from deeprl_hw2.core import Preprocessor
 
-import pdb
-
-
 class HistoryPreprocessor(Preprocessor):
     """Keeps the last k states.
 
@@ -21,60 +18,27 @@ class HistoryPreprocessor(Preprocessor):
     Parameters
     ----------
     history_length: int
-      Number of previous states to prepend to state being processed.
+      Number of states to feed to CNN (4 acc to paper).
 
     """
-
-    def __init__(self, height, width, history_length=1):
+    def __init__(self, history_length=4):
         self.history_length = history_length
-        self.height = height
-        self.width = width
-
-        self.history = np.zeros((self.history_length, self.height, self.width), dtype='float32')
-
-        # self.oldest = 0
-        # self.newest = 0
-        # self.size = 0
+        self.history = np.zeros([history_length, 84, 84, 1], dtype='float32')
 
     def process_state_for_network(self, state):
         """You only want history when you're deciding the current action to take."""
-        # Both state and self.history[self.newest] are (84,84) float32 arrays, scaled between 0 and 1
-        # self.history[self.newest] = state.astype('float32')
+        self.history = np.roll(self.history, -1, axis=0) # makes something like [0,1,2,3] -> [1,2,3,0]
+        self.history[-1] = state[..., np.newaxis] # replaces last item by 4. => [1,2,3,4]
+        return self.history
 
-        # state = np.roll(self.history, self.newest-1, axis=0)[::-1]
-        # state = np.swapaxes(np.swapaxes(state, 0, 2), 0, 1)
-        # state = state[np.newaxis, ...]
-        # # state is now (1,84,84,4) float32, with the newest->oldest frames at positions 0->history_length
-
-        # if self.size == self.history_length:
-        #     self.oldest = (self.oldest + 1) % self.history_length
-        # else:
-        #     self.size += 1
-        # self.newest = (self.newest + 1) % self.history_length
-
-        self.history = np.roll(self.history, -1, axis=0)
-        self.history[-1] = state
-        state = np.swapaxes(np.swapaxes(self.history, 0, 2), 0, 1)
-        state = state[np.newaxis, ...]
-        # state is now (1,84,84,4) float32, with the oldest->newest frames at positions 0->history_length
-
-        return state
-
-    def reset(self):
-        """Reset the history sequence.
-
+    def reset(self):    
+        """Reset the history sequence.4
         Useful when you start a new episode.
         """
-        self.history = np.zeros((self.history_length, self.height, self.width), dtype='float32')
-
-        self.oldest = 0
-        self.newest = 0
-        self.size = 0
+        self.history = np.zeros([self.history_length, 84, 84, 1], dtype='float32')
 
     def get_config(self):
-        return {'history_length': self.history_length, 'img_height': self.height, 'img_width': self.width,\
-                    'size': self.size, 'newest': self.newest}
-
+        return self.history_length
 
 class AtariPreprocessor(Preprocessor):
     """Converts images to greyscale and downscales.
@@ -112,9 +76,8 @@ class AtariPreprocessor(Preprocessor):
       (84, 84) will make each image in the output have shape (84, 84).
     """
 
-    def __init__(self, new_size, window_length):
-        self.final_size = new_size
-        self.window_length = window_length
+    def __init__(self):
+        pass
 
     def process_state_for_memory(self, state):
         """Scale, convert to greyscale and store as uint8.
@@ -126,26 +89,23 @@ class AtariPreprocessor(Preprocessor):
         We recommend using the Python Image Library (PIL) to do the
         image conversions.
         """
-        state = np.array(Image.fromarray(state).resize(self.final_size).convert('L')).astype('uint8')
-        return state
+        # if not (state.shape == (84,84)):
+            # raise ValueError('AtariPreprocessor.process_state_for_memory : input state is not 84*84')
+        state_gray = Image.fromarray(state).convert('L')
+        state_gray = state_gray.resize((110,84)).crop((0, 0, 84, 84)) # section 4.1
+        #state_gray = state_gray.crop((0,26,84,110)) #crops looking at the bottom of the image, not at the score
+        return np.uint8(np.asarray(state_gray))
 
     def process_state_for_network(self, state):
         """Scale, convert to greyscale and store as float32.
 
         Basically same as process state for memory, but this time
-        outputs float32 images. <- NO.
+        outputs float32 images.
         """
-        # proc_state = np.zeros((self.window_length, state.shape[0], state.shape[1]), dtype='float32')
-        # for i in range(self.window_length):
-        #     old_frame = state[self.frame_skip*i]
-        #     new_frame = state[self.frame_skip*i + 1]
+        state_gray = self.process_state_for_memory(state)
+        return np.float32(state_gray)/255.
 
-        #     proc_state[i] = np.maximum(old_frame, new_frame)
-
-        # return np.swapaxes(np.swapaxes(proc_state, 0, 2), 0, 1)
-        state = (self.process_state_for_memory(state).astype('float32') / 255.0)
-        return state
-
+    # todo check 
     def process_batch(self, samples):
         """The batches from replay memory will be uint8, convert to float32.
 
@@ -153,13 +113,11 @@ class AtariPreprocessor(Preprocessor):
         samples from the replay memory. Meaning you need to convert
         both state and next state values.
         """
-        samples = (samples.astype('float32') / 255.0)
-        return samples
+        return np.float32(samples)/255.
 
     def process_reward(self, reward):
         """Clip reward between -1 and 1."""
         return np.clip(reward, -1, 1)
-
 
 class PreprocessorSequence(Preprocessor):
     """You may find it useful to stack multiple prepcrocesosrs (such as the History and the AtariPreprocessor).
@@ -174,24 +132,22 @@ class PreprocessorSequence(Preprocessor):
     state = atari.process_state_for_network(state)
     return history.process_state_for_network(state)
     """
-    def __init__(self, height, width, new_size, window_length):
-        History = HistoryPreprocessor(height, width, window_length)
-        Atari = AtariPreprocessor(new_size, window_length)
-        self.preprocessors = {'history': History, 'atari': Atari}
+    def __init__(self):
+        self.history_preprocessor = HistoryPreprocessor()
+        self.atari_preprocessor = AtariPreprocessor()
 
     def process_state_for_network(self, state):
-        state = self.preprocessors['atari'].process_state_for_network(state)
-        return self.preprocessors['history'].process_state_for_network(state)
+        state = self.atari_preprocessor.process_state_for_network(state)
+        return self.history_preprocessor.process_state_for_network(state)
 
     def process_state_for_memory(self, state):
-        return self.preprocessors['atari'].process_state_for_memory(state)
+        return self.atari_preprocessor.process_state_for_memory(state)
 
-    def process_batch_for_network(self, batch):
-        batch = self.preprocessors['atari'].process_batch(batch)
-        return batch
+    def process_batch(self, batch):
+        return self.atari_preprocessor.process_batch(batch)
 
     def process_reward(self, reward):
-        return self.preprocessors['atari'].process_reward(reward)
+        return self.atari_preprocessor.process_reward(reward)
 
-    def reset_history(self):
-        self.preprocessors['history'].reset()
+    def reset_history_memory(self):
+        self.history_preprocessor.reset()

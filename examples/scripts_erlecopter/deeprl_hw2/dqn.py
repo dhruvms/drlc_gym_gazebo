@@ -1,21 +1,29 @@
 """Main DQN agent."""
 
-import pdb
-import objectives
-from keras.optimizers import Adam
-from keras.models import Sequential
-from keras import backend as K
 import tensorflow as tf
-import numpy as np
-from PIL import Image
-import os
-import random
-import moviepy.editor as mpy
-from gym import wrappers
-from keras.layers import (Activation, Lambda, Conv2D, Dense, Flatten, Input,
-                          Permute)
-from keras.models import Model
 
+from keras.models import Sequential, Model
+from keras.layers import Dense, Activation, Dropout, Reshape, Flatten, Lambda
+from keras.layers.convolutional import Convolution2D, ZeroPadding2D, AveragePooling2D, MaxPooling2D
+from keras.optimizers import Adam
+from keras import backend as K
+from keras.backend.tensorflow_backend import set_session
+import keras
+
+from objectives import *
+import gym
+import numpy as np
+from policy import *
+import preprocessors
+from core import *
+import matplotlib.pyplot as plt
+import cPickle as pkl
+import os
+from gym import wrappers
+
+#config = tf.ConfigProto()
+#config.gpu_options.per_process_gpu_memory_fraction = 0.5
+#K.set_session(tf.Session(config=config))
 
 class DQNAgent:
     """Class implementing DQN.
@@ -34,8 +42,7 @@ class DQNAgent:
     q_network: keras.models.Model
       Your Q-network model.
     preprocessor: deeprl_hw2.core.Preprocessor
-      The preprocessor class. See th
-      e associated classes for more
+      The preprocessor class. See the associated classes for more
       details.
     memory: deeprl_hw2.core.Memory
       Your replay memory.
@@ -57,39 +64,81 @@ class DQNAgent:
       How many samples in each minibatch.
     """
     def __init__(self,
-                 q_network,
-                 preprocessor,
-                 memory,
-                 policy,
+                 env,
                  gamma,
                  target_update_freq,
                  num_burn_in,
                  train_freq,
                  batch_size,
-                 alpha,
-                 model_name,
-                 network_type = 'single',
-                 b_target_fix = True,
-                 save_frequency = 1000):
-        self.q_network = q_network
-        self.num_networks = len(q_network)
-        self.preprocessor = preprocessor
-        self.memory = memory
-        self.policy = policy
+                 mode,
+                 log_parent_dir = '/home/vaibhav/madratman/logs/project/dqn'):
+
+        self.env_string = env
+        self.env = gym.make(env)
+        self.num_actions = self.env.action_space.n
         self.gamma = gamma
         self.target_update_freq = target_update_freq
         self.num_burn_in = num_burn_in
         self.train_freq = train_freq
         self.batch_size = batch_size
-        self.b_target_fix = b_target_fix
-        self.alpha = alpha
-        self.episode_num = 0
-        self.global_step = 0
-        self.save_frequency = save_frequency
-        self.network_type = network_type
-        self.model_name = model_name
+        self.iter_ctr = 0
 
-    def compile(self, optimizer, loss_func):
+        self.eval_episode_ctr = 0
+        self.preprocessor = preprocessors.PreprocessorSequence()
+
+        # loggers
+        self.qavg_list = np.array([0])
+        self.reward_list = []
+        self.loss_log = []
+        self.loss_last = None
+        self.mode = mode
+        self.log_parent_dir = log_parent_dir
+        self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
+
+    def create_model(self):  # noqa: D103
+        """Create the Q-network model.
+
+        Use Keras to construct a keras.models.Model instance (you can also
+        use the SequentialModel class).
+
+        We highly recommend that you use tf.name_scope as discussed in
+        class when creating the model and the layers. This will make it
+        far easier to understnad your network architecture if you are
+        logging with tensorboard.
+
+        Parameters
+        ----------
+        window: int
+          Each input to the network is a sequence of frames. This value
+          defines how many frames are in the sequence.
+        input_shape: tuple(int, int)
+          The expected input image size.
+        num_actions: int
+          Number of possible actions. Defined by the gym environment.
+        model_name: str
+          Useful when debugging. Makes the model show up nicer in tensorboard.
+
+        Returns
+        -------
+        keras.models.Model
+          The Q-model.
+        """
+        # reference for creation of the model https://yilundu.github.io/2016/12/24/Deep-Q-Learning-on-Space-Invaders.html
+        model=Sequential()
+        model.add(Convolution2D (32,8,8, subsample = (4,4), input_shape=(84,84,4) ))
+        model.add(Activation('relu'))
+        model.add(Convolution2D (64,4,4, subsample = (2,2) ))
+        model.add(Activation('relu'))
+        model.add(Convolution2D (64,3,3, subsample = (1,1) ))
+        model.add(Activation('relu'))
+        model.add(Flatten())
+        model.add(Dense(512))
+        model.add(Activation('relu'))
+        model.add(Dense(self.num_actions)) 
+
+        return model
+
+    def compile(self):
         """Setup all of the TF graph variables/ops.
 
         This is inspired by the compile method on the
@@ -106,104 +155,66 @@ class DQNAgent:
         keras.optimizers.Optimizer class. Specifically the Adam
         optimizer.
         """
-        for i in range(self.num_networks):
-          self.q_network[i].compile(optimizer=optimizer, loss=loss_func)
+        # create both networks
+        self.q_network = self.create_model()
+        self.target_q_network = self.create_model()
 
-        if (self.num_networks==1) and (self.b_target_fix == True):
-          if self.model_name == 'dueling dqn':
-            def getTiledAdvantage(a):
-              num_actions = K.params['actions']
-              a_mean = tf.reduce_mean(a, axis = 1)
-              a_mean = K.expand_dims(a_mean, axis = 1)
-              a_mean = tf.tile(a_mean, [1,num_actions])
-              a_norm = tf.subtract(a,a_mean)
-              return a_norm 
+        # set loss function in both 
+        adam = Adam(lr=1e-4)
+        self.q_network.compile(loss=mean_huber_loss, optimizer=adam) 
+        self.target_q_network.compile(loss=mean_huber_loss, optimizer=adam)
+        
+        # set the same weights for both initially
+        self.target_q_network.set_weights(self.q_network.get_weights())
+        
+        print self.q_network.summary()
 
-
-            def getTiledValue(v):
-              num_actions = K.params['actions']
-              v_tiled = tf.tile(v,[1,num_actions])
-              return v_tiled
-
-            input = Input(shape = (84,84,4), name = 'input')
-            y = Conv2D(32, (8,8), strides=(4,4), activation='relu')(input)
-            y = Conv2D(64, (4,4), strides=(2,2), activation='relu')(y)
-            y = Conv2D(64, (3,3), strides=(1,1), activation='relu')(y)
-            y = Flatten()(y)
-
-            value_out = Dense(512, activation='relu')(y)
-            value_out = Dense(1)(y)
-            value_out = Lambda(getTiledValue)(value_out)
-
-            adv_out = Dense(512, activation='relu')(y)
-            adv_out = Dense(K.params['actions'])(y)
-            adv_out = Lambda(getTiledAdvantage)(adv_out)
-
-
-            out = Lambda(lambda outs: outs[0] + outs[1])
-            net_output = out([value_out, adv_out])
-
-            model_1 = Model(inputs = [input], outputs = [net_output])
-            self.target_q_network = model_1
-
-          else:
-            config = self.q_network[0].get_config()
-            self.target_q_network = Sequential.from_config(config)
-            self.target_q_network.set_weights(self.q_network[0].get_weights())
-            self.target_q_network.compile(optimizer=optimizer, loss=loss_func)
-
-    def calc_q_values(self, state, model_idx, batch=None):
+    def calc_q_values(self, state):
         """Given a state (or batch of states) calculate the Q-values.
-
         Basically run your network on these states.
 
         Return
         ------
         Q-values for the state(s)
-        """
-        if batch == None:
-          batch = self.batch_size
+        """ 
+        q_vals = self.q_network.predict(np.swapaxes(state,0,3),batch_size=1)
+        return q_vals
 
-        if model_idx == -1:
-          q_state = self.target_q_network.predict(state, batch_size=batch)
-        else:
-          q_state = self.q_network[model_idx].predict(state, batch_size=batch)
+    def make_log_dir(self):
+        import datetime, os
+        current_timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        self.log_dir = os.path.join(self.log_parent_dir, self.env_string, self.mode, current_timestamp)
+        os.makedirs(self.log_dir)
+        os.makedirs(os.path.join(self.log_dir, 'weights'))
+        os.makedirs(os.path.join(self.log_dir, 'gym_monitor'))
+        # create empty logfiles now
+        self.log_files = {
+                            'train_loss': os.path.join(self.log_dir, 'train_loss.txt'),
+                            'train_episode_reward': os.path.join(self.log_dir, 'train_episode_reward.txt'),
+                            'test_episode_reward': os.path.join(self.log_dir, 'test_episode_reward.txt')
+                          }
 
+        for key in self.log_files:
+            open(os.path.join(self.log_dir, self.log_files[key]), 'a').close()
 
-        return q_state
+    def dump_train_loss(self, loss):
+        self.loss_last = loss
+        with open(self.log_files['train_loss'], "a") as f:
+            f.write(str(loss) + '\n')
 
-    def select_action(self, state, **kwargs):
-        """Select the action based on the current state.
+    def dump_train_episode_reward(self, episode_reward):
+        with open(self.log_files['train_episode_reward'], "a") as f:
+            f.write(str(episode_reward) + '\n')
 
-        You will probably want to vary your behavior here based on
-        which stage of training your in. For example, if you're still
-        collecting random samples you might want to use a
-        UniformRandomPolicy.
+    def dump_test_episode_reward(self, episode_reward):
+        with open(self.log_files['test_episode_reward'], "a") as f:
+            f.write(str(episode_reward) + '\n')
 
-        If you're testing, you might want to use a GreedyEpsilonPolicy
-        with a low epsilon.
-
-        If you're training, you might want to use the
-        LinearDecayGreedyEpsilonPolicy.
-
-        This would also be a good place to call
-        process_state_for_network in your preprocessor.
-
-        Returns
-        --------
-        selected action
-        """
-        # self.preprocessor is SequencePreprocessor. It calls Atari -> History, and returns
-        # the latest sequence of processed frames.
-        state_p = self.preprocessor.process_state_for_network(state) # state is uint8
-        
-
-        q_values = self.calc_q_values(state_p, 0, state_p.shape[0])
-        if self.num_networks == 2:
-          q_values += self.calc_q_values(state_p, 1, state_p.shape[0])
-
-        action = self.policy.select_action(q_values, kwargs['stage'])
-        return action
+    # ref http://stackoverflow.com/questions/37902705/how-to-manually-create-a-tf-summary 
+    # https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514#file-tensorboard_logging-py-L41
+    def tf_log_scaler(self, tag, value, step):
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+        self.tf_summary_writer.add_summary(summary, step)
 
     def update_policy(self):
         """Update your policy.
@@ -220,78 +231,59 @@ class DQNAgent:
         You might want to return the loss and other metrics as an
         output. They can help you monitor how training is going.
         """
+        # this is update_policy 
+        # sample batch of 32 from the memory
+        batch_of_samples = self.replay_memory.sample(batch_size=32)
+        current_state_samples = batch_of_samples['current_state_samples']
+        next_state_samples = batch_of_samples['next_state_samples']
+        #print type(current_state_samples[0])
 
-        batch_states,batch_actions,batch_rewards,batch_terminal = self.memory.sample(self.batch_size)
+        # fetch stuff we need from samples 32*84*84*4
+        current_state_images = np.zeros([32, 84, 84, 4])
+        for (idx, each_list_of_samples) in enumerate(current_state_samples):
+            current_state_images[idx, ...] = np.dstack([sample.state for sample in each_list_of_samples])
 
+        next_state_images = np.zeros([32, 84, 84, 4])
+        for (idx, each_list_of_samples) in enumerate(next_state_samples):
+            next_state_images[idx, ...] = np.dstack([sample.state for sample in each_list_of_samples])
 
-        window = batch_states.shape[-1]-1
-        batch_curr_states = batch_states[..., 0:window]
-        batch_next_states = batch_states[..., 1:window+1]
+        # preprocess
+        current_state_images = self.preprocessor.process_batch(current_state_images)
+        next_state_images = self.preprocessor.process_batch(next_state_images)
+        # print "current_state_images {} max {} ".format(current_state_images.shape, np.max(current_state_images))
 
-        batch_curr_states_proc = self.preprocessor.process_batch_for_network(batch_curr_states)
-        batch_next_states_proc = self.preprocessor.process_batch_for_network(batch_next_states)
+        q_current = self.q_network.predict(current_state_images,batch_size=self.batch_size) # 32*num_actions
+        q_next = self.target_q_network.predict(next_state_images,batch_size=self.batch_size)
 
+        # targets
+        y_targets_all = q_current #32*num_actions
 
-        if self.num_networks == 1:
-          model_idx = 0
-          if self.network_type == 'single':
-            if self.b_target_fix == True:        # For DQN and linear with target fixing
-              q_s_a_curr = self.calc_q_values(batch_curr_states_proc,0)
-              q_s_a_next = self.calc_q_values(batch_next_states_proc,-1)
-            else:     # For linear with no target fixing (also should be no replay memory)
-              q_s_a_curr = self.calc_q_values(batch_curr_states_proc,0)
-              q_s_a_next = self.calc_q_values(batch_next_states_proc,0)
-          elif self.network_type == 'double':  # For DDQN
-            q_s_a_curr = self.calc_q_values(batch_curr_states_proc,model_idx)
-            q_s_a_next_source = self.calc_q_values(batch_next_states_proc,model_idx)
-            q_s_a_next_target = self.calc_q_values(batch_next_states_proc,-1)
-        elif self.num_networks == 2:   # For double linear:double Q learning
-          model_idx = random.randint(0, 1)
-          q_s_a_curr = self.calc_q_values(batch_curr_states_proc,model_idx)
-          q_s_a_next = self.calc_q_values(batch_next_states_proc,1-model_idx)
+        for (idx, each_list_of_samples) in enumerate(current_state_samples):
+            last_sample = each_list_of_samples[-1]
+            if last_sample.is_terminal:
+                y_targets_all[idx, last_sample.action] = last_sample.reward
+            else:
+                if self.mode == 'vanilla':
+                    y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*np.max(q_next[idx])
+                if self.mode == 'double':				
+                    y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*q_next[idx, np.argmax(q_current[idx])] 
 
+        loss = self.q_network.train_on_batch(current_state_images, np.float32(y_targets_all))
 
+        with tf.name_scope('summaries'):
+            self.tf_log_scaler(tag='train_loss', value=loss, step=self.iter_ctr)
 
+        if not (self.iter_ctr % self.log_loss_every_nth):
+            self.dump_train_loss(loss)
 
-        target = q_s_a_curr[:]
-        for i in range(self.batch_size):
-          if self.network_type == 'single' or self.model_name == 'double linear':
-            target[i,batch_actions[i]] = batch_terminal[i].astype(float)*batch_rewards[i] + (1-batch_terminal[i].astype(float))*(batch_rewards[i] + self.gamma*np.max(q_s_a_next[i,:]))
-          elif self.network_type == 'double':
-            target[i,batch_actions[i]] = batch_terminal[i].astype(float)*batch_rewards[i] + (1-batch_terminal[i].astype(float))*(batch_rewards[i] + self.gamma*q_s_a_next_target[i, np.argmax(q_s_a_next_source[i,:])])
+        if (self.iter_ctr > (self.num_burn_in+1)) and not(self.iter_ctr%self.target_update_freq):
+            # copy weights
+            print "Iter {} Updating target Q network".format(self.iter_ctr)
+            self.target_q_network.set_weights(self.q_network.get_weights())
+            # [self.target_q_network.trainable_weights[i].assign(self.q_network.trainable_weights[i]) \
+            #     for i in range(len(self.target_q_network.trainable_weights))]
 
-
-
-        loss = self.q_network[model_idx].train_on_batch(batch_curr_states_proc, target)
-
-        if ((self.num_networks==1) and (self.b_target_fix == True) and (len(self.memory) > self.num_burn_in) and (self.global_step%self.target_update_freq == 0)): 
-          weights = self.q_network[model_idx].get_weights()
-          self.target_q_network.set_weights(weights)
-
-        return loss
-
-    def add_scalar_summary(self, name, value):
-      summary = tf.Summary()
-      summary_value = summary.value.add()
-      summary_value.simple_value = value
-      summary_value.tag = name
-
-      return summary
-
-    def save_model(self):
-      folder = 'logs/'
-      for the_file in os.listdir(folder):
-          file_path = os.path.join(folder, the_file)
-          try:
-              if os.path.isfile(file_path) and file_path[-3:] == '.h5':
-                  os.unlink(file_path)
-          except Exception as e:
-              print(e)
-
-      filepath = 'logs/' + '_'.join([self.model_name, self.network_type, 'Step']) + str(self.episode_num) + '.h5'
-      self.q_network[self.num_networks-1].save(filepath)
-
-    def fit(self, env, num_iterations, max_episode_length=None):
+    def fit(self, num_iterations, max_episode_length=250, eval_every_nth=1000, save_model_every_nth=1000, log_loss_every_nth=1000, video_every_nth=20000):
         """Fit your model to the provided environment.
 
         Its a good idea to print out things like loss, average reward,
@@ -316,88 +308,108 @@ class DQNAgent:
           How long a single episode should last before the agent
           resets. Can help exploration.
         """
-        self.sess = K.get_session()
-        self.writer = tf.summary.FileWriter('logs', self.sess.graph)
+        self.compile()
+        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=1e6, num_actions=self.num_actions) # for training
+        self.replay_memory = ReplayMemory(max_size=1000000)
+        self.log_loss_every_nth = log_loss_every_nth
+        random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
+        num_episodes = 0
 
-        optimizer = Adam(lr=self.alpha, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
-        loss_func = objectives.mean_huber_loss
-        self.compile(optimizer, loss_func)
+        # tf logging
+        self.tf_session = K.get_session()
+        self.tf_summary_writer = tf.summary.FileWriter(self.log_dir, self.tf_session.graph)
 
-        while self.global_step < num_iterations:
-          self.preprocessor.reset()
-          curr_state = env.reset()
-          # env.render()
+        while self.iter_ctr < num_iterations:
+            state = self.env.reset()
+            self.preprocessor.reset_history_memory()
 
-          episode_reward = 0
+            num_timesteps_in_curr_episode = 0
+            total_reward_curr_episode = 0       
 
-          for j in range(max_episode_length):
-            self.global_step += 1
-            if len(self.memory) <= self.num_burn_in:
-              action = self.select_action(curr_state, **{'stage': 'random'})
-            else:
-              action = self.select_action(curr_state, **{'stage': 'training'})
-            
-            if not (self.global_step % self.target_update_freq):
-              print('Episode No = ', self.episode_num, 'Episode steps = ', j, 'Total Steps = ', self.global_step, 'Memory size = ', len(self.memory), 'Current eps = ', self.policy.decay_greedy_epsilon.epsilon)
-            next_state, reward, is_terminal, debug_info = env.step(action)
-            reward = self.preprocessor.process_reward(reward)
-            # env.render()
+            while num_timesteps_in_curr_episode < max_episode_length:
+                self.iter_ctr+=1 # number of steps overall
+                num_timesteps_in_curr_episode += 1 # number of steps in the current episode
 
+                # logging
+                # if not self.iter_ctr % 1000:
+                    # print "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
 
-            episode_reward += reward
+                # this appends to uint8 history and also returns stuff ready to be spit into the  network
+                state_network = self.preprocessor.process_state_for_network(state) #shape is (4,84,84,1). axis are swapped in cal_q_vals
+                # print "shape {}, max {}, min {}, type {} ".format(state_network.shape, np.max(state_network), np.min(state_network), state_network.dtype)
 
-            if self.b_target_fix == False and self.network_type == 'single':
-              if is_terminal:
-                break
+                # burning in 
+                if self.iter_ctr < self.num_burn_in:
+                    action = random_policy.select_action() # goes from 0 to n-1
+                    # print "\ntaking action", action, "\n"
 
-              curr_state_proc = self.preprocessor.process_state_for_network(curr_state)
-              next_state_proc = self.preprocessor.process_state_for_network(next_state)
-              q_s_a_curr = self.calc_q_values(curr_state_proc,0)
-              q_s_a_next = self.calc_q_values(next_state_proc,0)
-              target = q_s_a_curr[:]
-              target[0, action] = float(is_terminal)*reward+(1-float(is_terminal))*(reward + self.gamma*np.max(q_s_a_next[0,:]))
-              loss = self.q_network[0].train_on_batch(curr_state_proc, target)
+                    next_state, reward, is_terminal, _ = self.env.step(action)
+                    reward_proc = self.preprocessor.process_reward(reward)
+                    total_reward_curr_episode += reward_proc
+                    state_proc_memory = self.preprocessor.process_state_for_memory(state)
+                    # atari_preprocessor.process_state_for_memory converts it to grayscale, resizes it to (84, 84) and converts to uint8
+                    self.replay_memory.append(state_proc_memory, action, reward_proc, is_terminal)
 
-              with tf.name_scope('summaries'):
-                pass
-                # self.writer.add_summary(self.add_scalar_summary('training_loss', loss), self.global_step)
+                    if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
+                        state = self.env.reset()
+                        num_episodes += 1
+                        with tf.name_scope('summaries'):
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
+                        print "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        num_timesteps_in_curr_episode = 0
+                        self.dump_train_episode_reward(total_reward_curr_episode)
+                        # this should be called when num_timesteps_in_curr_episode > max_episode_length, but we can call it in is_terminal as well. 
+                        # it won't change anything as it just sets the last entry's is_terminal to True
+                        self.replay_memory.end_episode() 
+                        break
 
-              if (not (self.global_step % self.save_frequency)):
-                self.save_model()
+                # training
+                else:
+                    # print "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                    q_values = self.calc_q_values(state_network)
+                    # print "q_values {} q_values.shape {}".format(q_values, q_values.shape)
+                    #print "q_values.shape ", q_values.shape
+                    action = self.policy.select_action(q_values=q_values, is_training=True)
+                    next_state, reward, is_terminal, _ = self.env.step(action)
+                    reward_proc = self.preprocessor.process_reward(reward)
+                    total_reward_curr_episode += reward_proc
+                    state_proc_memory = self.preprocessor.process_state_for_memory(state)
+                    self.replay_memory.append(state_proc_memory, action, reward_proc, is_terminal)
 
-            else:
-              curr_state_proc_memory = self.preprocessor.process_state_for_memory(curr_state)
-              self.memory.append(curr_state_proc_memory, action, reward, is_terminal)
-              
-              if is_terminal:
-                self.memory.end_episode(curr_state_proc_memory, is_terminal=True)
-                break
-              if j == max_episode_length-1:
-                self.memory.end_episode(curr_state_proc_memory, is_terminal=False)
-              
-              if (len(self.memory) > self.num_burn_in) and (self.global_step%self.train_freq == 0):
-                loss = self.update_policy()
+                    # validation. keep this clause before the breaks!
+                    if not(self.iter_ctr%eval_every_nth):
+                        print "\n\nEvaluating at iter {}".format(self.iter_ctr)
+                        if not(self.iter_ctr%video_every_nth):
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                        else:
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
+                        print "Done Evaluating\n\n"
 
-                with tf.name_scope('summaries'):
-                 self.writer.add_summary(self.add_scalar_summary('training_loss', loss), self.global_step)
-              
-              # print('Loss = ', loss)
-        
-              if ((len(self.memory) > self.num_burn_in) and (self.global_step % self.save_frequency == 0)):
-                self.save_model()
-               
-            
-            curr_state = next_state
-            if (not (self.global_step % (num_iterations/3)) or self.global_step == 1):
-              self.evaluate(env, 20, max_episode_length, save_vid=True)
-            elif (not self.global_step % (self.target_update_freq)):
-              self.evaluate(env, 20, max_episode_length, save_vid=False)
-         
-          self.episode_num += 1
-          self.writer.add_summary(self.add_scalar_summary('episode_reward', episode_reward), self.episode_num)
+                    # save model
+                    if not(self.iter_ctr%save_model_every_nth):
+                        self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
 
+                    if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
+                        state = self.env.reset()
+                        num_episodes += 1
+                        with tf.name_scope('summaries'):
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
+                        print "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        num_timesteps_in_curr_episode = 0
+                        self.dump_train_episode_reward(total_reward_curr_episode)
+                        self.replay_memory.end_episode() 
+                        break
 
-    def evaluate(self, env, num_episodes, max_episode_length=None, save_vid=False):
+                    if not(self.iter_ctr % self.train_freq):
+                        self.update_policy()
+
+                state = next_state
+
+    def evaluate(self, num_episodes, max_episode_length=None, gen_video=False):
         """Test your agent with a provided environment.
         
         You shouldn't update your network parameters here. Also if you
@@ -410,45 +422,64 @@ class DQNAgent:
         You can also call the render function here if you want to
         visually inspect your policy.
         """
+        evaluation_policy = GreedyPolicy()
+        eval_preprocessor = preprocessors.PreprocessorSequence()
+        env_valid = gym.make(self.env_string)
 
-        print('Evaluating at global step {}'.format(self.global_step))
-        if save_vid:
-          print('SAVING FRAMES TO DISK')
-          directory = '_'.join(['eval', 'frames', self.model_name, self.network_type]) + '/'
-          subfolder = 'GStep{}'.format(str(self.global_step)) + '/'
+        iter_ctr_valid = 0
+        Q_sum = 0
+        eval_episode_ctr_valid = 0
+        total_reward_all_episodes = []
+  
+        # https://github.com/openai/gym/blob/master/gym/wrappers/monitoring.py video_callable takes function as arg. so we hack with true lambda
+        # https://github.com/openai/gym/issues/494  
+        if gen_video:
+            video_dir = os.path.join(self.log_dir, 'gym_monitor', str(self.iter_ctr).zfill(7))
+            os.makedirs(video_dir)
+            env_valid = wrappers.Monitor(env_valid, video_dir, video_callable=lambda x:True, mode='evaluation')
 
-          if not os.path.exists(directory):
-            os.makedirs(directory)
-          if not os.path.exists(directory+subfolder):
-            os.makedirs(directory+subfolder)
+        while eval_episode_ctr_valid < num_episodes:
+            state = env_valid.reset()
+            eval_preprocessor.reset_history_memory()
+            num_timesteps_in_curr_episode = 0
+            total_reward_curr_episode = 0.0
 
-          env = wrappers.Monitor(env, directory + subfolder, mode='evaluation', video_callable=lambda _: True, uid='_'.join([self.model_name, self.network_type]))
+            while num_timesteps_in_curr_episode < max_episode_length:
+                num_timesteps_in_curr_episode += 1
+                iter_ctr_valid += 1
 
-        else:
-          print('NOT SAVING FRAMES TO DISK')
+                state_network = self.preprocessor.process_state_for_network(state)
+                q_values = self.calc_q_values(state_network)
+                Q_sum += np.max(q_values) # todo fix this
 
-        total_steps = 0
-        total_reward = 0
-        for episode in range(num_episodes):
-          self.preprocessor.reset()
-          curr_state = env.reset()
-          # env.render()
+                action = evaluation_policy.select_action(q_values)
+                next_state, reward, is_terminal, _ = env_valid.step(action)
+                total_reward_curr_episode += reward
+                # print "Evalution : timestep {}, episode {}, action {}, reward {}, total_reward {}"\
+                        # .format(iter_ctr_valid, eval_episode_ctr_valid, action, reward, total_reward_curr_episode)
 
-          episode_reward = 0
-          for step in range(max_episode_length):
-            total_steps += 1
-            action = self.select_action(curr_state, **{'stage': 'testing'})
-            next_state, reward, is_terminal, debug_info = env.step(action)
+                if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
+                    eval_episode_ctr_valid += 1
+                    print "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
+                            .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
+                    total_reward_all_episodes.append(total_reward_curr_episode)
+                    # num_timesteps_in_curr_episode = 0
+                    break
 
-            # env.render()
-            episode_reward += reward
-            if is_terminal:
-              break
-            curr_state = next_state
+                state = next_state
 
-          total_reward += episode_reward
-
+        Q_avg = Q_sum/float(iter_ctr_valid)
+        print " sum(total_reward_all_episodes) : {} , float(len(total_reward_all_episodes)) : {}".format\
+                (sum(total_reward_all_episodes), float(len(total_reward_all_episodes)))
+        all_episode_avg_reward = sum(total_reward_all_episodes)/float(len(total_reward_all_episodes))
         with tf.name_scope('summaries'):
-          self.writer.add_summary(self.add_scalar_summary('Evaluate/Avg Episode Reward', total_reward/num_episodes), self.global_step)
+            self.tf_log_scaler(tag='test_mean_avg_reward', value=all_episode_avg_reward, step=self.iter_ctr)
+            self.tf_log_scaler(tag='test_mean_Q_max', value=Q_avg, step=self.iter_ctr)
+        self.dump_test_episode_reward(all_episode_avg_reward)
+        self.qavg_list = np.append(self.qavg_list, Q_avg)
+        self.reward_list.append(all_episode_avg_reward)
 
-        env.close()
+        print "all_episode_avg_reward ", all_episode_avg_reward
+        print "\n\n\n self.reward_list \n\n\n", self.reward_list
+
+

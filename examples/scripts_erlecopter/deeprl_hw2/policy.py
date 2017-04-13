@@ -5,8 +5,7 @@ implementations and some unimplemented classes that should be useful
 in your code.
 """
 import numpy as np
-import attr
-import pdb
+import random
 
 class Policy:
     """Base class representing an MDP policy.
@@ -74,8 +73,10 @@ class GreedyPolicy(Policy):
 
     This is a pure exploitation policy.
     """
+    def __init__(self):
+        pass
 
-    def select_action(self, q_values, **kwargs):  # noqa: D102
+    def select_action(self, q_values):  # noqa: D102
         return np.argmax(q_values)
 
 
@@ -93,7 +94,7 @@ class GreedyEpsilonPolicy(Policy):
     """
     def __init__(self, epsilon, num_actions):
         self.epsilon = epsilon
-        self.num_actions = num_actions        
+        self.num_actions = num_actions
 
     def select_action(self, q_values, **kwargs):
         """Run Greedy-Epsilon for the given Q-values.
@@ -109,8 +110,7 @@ class GreedyEpsilonPolicy(Policy):
         int:
           The action index chosen.
         """
-        r = np.random.rand()
-        if r < self.epsilon:
+        if random.random() < self.epsilon:
             return np.random.randint(0, self.num_actions)
         else:
             return np.argmax(q_values)
@@ -132,17 +132,14 @@ class LinearDecayGreedyEpsilonPolicy(Policy):
 
     """
 
-    # def __init__(self, policy, attr_name, start_value, end_value, num_steps):  # noqa: D102
-    def __init__(self, start_value, end_value, num_steps, num_actions):  # noqa: D102
+    def __init__(self, num_actions, start_value, end_value, num_steps):
         self.start_value = start_value
         self.end_value = end_value
         self.num_steps = num_steps
-        self.curr_step = 0
+        self.epsilon = start_value
         self.num_actions = num_actions
 
-        self.epsilon = self.start_value
-
-    def select_action(self, q_values, is_training = True, **kwargs):
+    def select_action(self, q_values, is_training):
         """Decay parameter and select action.
 
         Parameters
@@ -155,41 +152,20 @@ class LinearDecayGreedyEpsilonPolicy(Policy):
         Returns
         -------
         Any:
-          Selected action.
+          Selected action.is_training
         """
         if is_training:
-            if self.curr_step <= self.num_steps:
-                self.epsilon = ((self.end_value-self.start_value)/self.num_steps)*self.curr_step + self.start_value
+            if self.epsilon > self.end_value:
+                # print "updating self.epsilon : old {} : new {}".format(self.epsilon, self.epsilon - ((self.start_value - self.end_value) /self.num_steps))
+                self.epsilon = self.epsilon - ((self.start_value - self.end_value) / self.num_steps)
             else:
                 self.epsilon = self.end_value
-        else:
-            self.epsilon = self.start_value
 
-        r = np.random.rand()
-        self.curr_step+=1
-        if r < self.epsilon:
-            return np.random.randint(0, self.num_actions)
+        if random.random() < self.epsilon:
+            return np.random.randint(0, self.num_actions) # first arg inclusive, second is not. interval [0, num_actions) effectively
         else:
             return np.argmax(q_values)
-        
 
     def reset(self):
-        """Start the decay over at the start value."""  
-        self.curr_step = 0
-
-class Policy_Set:
-    def __init__(self, num_actions, start_value, end_value, num_steps, epsilon=0.05):
-        self.uniform_random =  UniformRandomPolicy(num_actions)
-        self.greedy_policy =  GreedyPolicy()
-        self.greedy_epsilon = GreedyEpsilonPolicy(epsilon, num_actions)
-        self.decay_greedy_epsilon = LinearDecayGreedyEpsilonPolicy(start_value, end_value, num_steps, num_actions)
-
-    def select_action(self, q_values, stage):
-        if stage == 'training':
-            action = self.decay_greedy_epsilon.select_action(q_values)
-        elif stage == 'random':
-            action = self.uniform_random.select_action()
-        elif stage == 'testing':
-            action = self.greedy_epsilon.select_action(q_values)
-
-        return action
+        """Start the decay over at the start value."""
+        self.epsilon = self.start_value
