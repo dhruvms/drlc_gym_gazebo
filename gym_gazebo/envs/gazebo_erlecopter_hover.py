@@ -34,7 +34,20 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
                 pass
         
         takeoff_successful = False
+        start = time.time() 
+
         while not takeoff_successful:
+            diff = time.time() - start
+            if diff > 15.0:
+                rospy.loginfo('Changing mode to STABILIZE')
+                # Set STABILIZE mode
+                rospy.wait_for_service('/mavros/set_mode')
+                try:
+                    self.mode_proxy(0,'STABILIZE')
+                    start = time.time()
+                except rospy.ServiceException, e:
+                    print ("/mavros/set_mode service call failed: %s"%e)
+
             print "Taking off..."
             alt = altitude
             err = alt * 0.1 # 10% error
