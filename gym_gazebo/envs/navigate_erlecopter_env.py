@@ -245,40 +245,81 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 	def _step(self, action):
 		print "Taking action", action
-		action_msg = OverrideRCIn()
-		mean_yaw_pwm = 1500
-		delta = 150
 
-		if action == 0: #FORWARD
-			action_msg.channels[3] = mean_yaw_pwm  # Yaw
-		elif action == 1: 
-			action_msg.channels[3] = mean_yaw_pwm + delta
-		elif action == 2: 
-			action_msg.channels[3] = mean_yaw_pwm + (delta*1)
-		elif action == 3: 
-			action_msg.channels[3] = mean_yaw_pwm + (delta*2)
-		elif action == 4:
-			action_msg.channels[3] = mean_yaw_pwm - delta
-		elif action == 5:
-			action_msg.channels[3] = mean_yaw_pwm - (delta*2)
-		elif action == 6:
-			action_msg.channels[3] = mean_yaw_pwm - (delta*3)
+		# ######### Postion ############## 
+		target_pose_msg = PoseStamped()
+		now = rospy.get_rostime()
+		target_pose_msg.header.stamp.secs = now.secs
+		target_pose_msg.header.stamp.nsecs = now.nsecs
 
-		action_msg.channels[0] = 1500 # Roll
-		action_msg.channels[1] = 1400 # Pitch
-		action_msg.channels[2] = 1500 # Throttle
-		action_msg.channels[4] = 0
-		action_msg.channels[5] = 0
-		action_msg.channels[6] = 0
-		action_msg.channels[7] = 0
+		curr_x = self.pose.position.x
+		curr_y = self.pose.position.y
+		curr_z = self.pose.position.z
+		current_yaw = self.euler[2]
 
-		self.pub.publish(action_msg)
-		time.sleep(0.5)
+		speed = 5
 
-		action_msg.channels[3] = 0
-		action_msg.channels[1] = 1500
-		self.pub.publish(action_msg)
-		time.sleep(0.1)
+		action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
+		vel_x_body = speed*math.sin(action*(math.pi/10))
+		vel_y_body = speed*math.cos(action*(math.pi/10))
+
+		v_x = vel_y_body*math.sin(current_yaw) + vel_x_body*math.cos(current_yaw)
+		v_y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
+
+		delta = 0.5
+		target_pose_msg.pose.position.x = curr_x + v_x*delta
+		target_pose_msg.pose.position.y = curr_y + v_y*delta
+
+		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+		print "current yaw", current_yaw
+		print "delta_x", v_x*delta, "delta_y", v_y*delta
+
+		target_pose_msg.pose.position.z = curr_z
+		target_pose_msg.pose.orientation = self.pose.orientation
+		self.setpoint_pub.publish(target_pose_msg)
+		time.sleep(3)
+	
+		######### RC ############## 
+
+		# action_msg = OverrideRCIn()
+		# mean_yaw_pwm = 1500
+		# delta = 150
+
+		# if action == 0: #FORWARD
+		# 	action_msg.channels[3] = mean_yaw_pwm  # Yaw
+		# elif action == 1: 
+		# 	action_msg.channels[3] = mean_yaw_pwm + delta
+		# elif action == 2: 
+		# 	action_msg.channels[3] = mean_yaw_pwm + (delta*1)
+		# elif action == 3: 
+		# 	action_msg.channels[3] = mean_yaw_pwm + (delta*2)
+		# elif action == 4:
+		# 	action_msg.channels[3] = mean_yaw_pwm - delta
+		# elif action == 5:
+		# 	action_msg.channels[3] = mean_yaw_pwm - (delta*2)
+		# elif action == 6:
+		# 	action_msg.channels[3] = mean_yaw_pwm - (delta*3)
+
+		# action_msg.channels[0] = 1500 # Roll
+		# action_msg.channels[1] = 1425 # Pitch
+		# action_msg.channels[2] = 1500 # Throttle
+		# action_msg.channels[4] = 0
+		# action_msg.channels[5] = 0
+		# action_msg.channels[6] = 0
+		# action_msg.channels[7] = 0
+
+		# self.pub.publish(action_msg)
+		# time.sleep(0.5)
+
+		# action_msg.channels[3] = 0
+		# action_msg.channels[1] = 1500
+		# self.pub.publish(action_msg)
+		# time.sleep(0.1)
+
+
+		######### VELOCITY ############## 
+		# curr_x = self.pose.position.x
+		# current_yaw = self.euler[2]
 		# vel_cmd = TwistStamped()
 		# now = rospy.get_rostime()
 		# vel_cmd.header.stamp.secs = now.secs
@@ -287,12 +328,18 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# speed = 5
 		# pi = math.pi
 
-		# vel_cmd.twist.linear.x = speed*math.cos(action*(pi/10))
-		# vel_cmd.twist.linear.y = speed*math.sin(action*(pi/10))
+		# action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
+		# vel_x_body = speed*math.sin(action*(pi/10))
+		# vel_y_body = speed*math.cos(action*(pi/10))
+
+		# vel_cmd.twist.linear.x = vel_y_body*math.sin(current_yaw) + vel_x_body*math.cos(current_yaw)
+		# vel_cmd.twist.linear.y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
 		# vel_cmd.twist.linear.z = 0
 		# # quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+		# print "current yaw", current_yaw
 		# print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		# self.vel_pub.publish(vel_cmd)
+		# time.sleep(1)
 	
 		observation = self._get_frame()
 		
@@ -472,7 +519,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 	def discretize_observation(self,data,new_ranges):
 		# print data
 		discretized_ranges = []
-		min_range = 4.0
+		min_range = 2.5
 		done = False
 		mod = len(data.ranges)/new_ranges
 		for i, item in enumerate(data.ranges):

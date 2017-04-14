@@ -330,6 +330,10 @@ class DQNAgent:
             while num_timesteps_in_curr_episode < max_episode_length:
                 self.iter_ctr+=1 # number of steps overall
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
+                RED = '\033[91m'
+                BOLD = '\033[1m'
+                ENDC = '\033[0m'        
+                LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
 
                 # # logging
                 # if not self.iter_ctr % 10:
