@@ -207,10 +207,9 @@ if __name__ == '__main__':
 
 
 
+    # pdb.set_trace()
 
-
-
-    env = gym.make('GazeboErleCopterHover-v0')
+    env = gym.make('GazeboErleCopterNavigate-v0')
 
     # outdir = '/tmp/gazebo_gym_experiments'
     # env.monitor.start(outdir, force=True, seed=None)
@@ -237,10 +236,10 @@ if __name__ == '__main__':
 
 
 
-    # Agent.fit(env, args.num_iterations, args.max_episode_length)
+    Agent.fit(env, args.num_iterations, args.max_episode_length)
     
     
 
-    
+    pdb.set_trace()
     # env.monitor.close()
     env.close()
