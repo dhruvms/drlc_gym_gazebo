@@ -144,13 +144,13 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		time.sleep(1)
 
-		rospy.loginfo('Changing mode to ALT_HOLD')
-		# Set ALT_HOLD mode
-		rospy.wait_for_service('/mavros/set_mode')
-		try:
-			self.mode_proxy(0,'ALT_HOLD')
-		except rospy.ServiceException, e:
-			print ("/mavros/set_mode service call failed: %s"%e)
+		# rospy.loginfo('Changing mode to ALT_HOLD')
+		# # Set ALT_HOLD mode
+		# rospy.wait_for_service('/mavros/set_mode')
+		# try:
+		# 	self.mode_proxy(0,'ALT_HOLD')
+		# except rospy.ServiceException, e:
+		# 	print ("/mavros/set_mode service call failed: %s"%e)
 
 	def _launch_apm(self):
 		sim_vehicle_sh = str(os.environ["ARDUPILOT_PATH"]) + "/Tools/autotest/sim_vehicle.sh"
@@ -191,8 +191,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self.takeoff_proxy = rospy.ServiceProxy('/mavros/cmd/takeoff', CommandTOL)
 
 		self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=1)
-		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
-		self.setpoint_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=10)
+		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10, latch=True)
+		self.setpoint_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=10, latch=True)
 		self.pose_subscriber = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_callback)
 
 		self.rtl_time = 5
@@ -247,37 +247,41 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		print "Taking action", action
 
 		# ######### Postion ############## 
-		target_pose_msg = PoseStamped()
-		now = rospy.get_rostime()
-		target_pose_msg.header.stamp.secs = now.secs
-		target_pose_msg.header.stamp.nsecs = now.nsecs
+		# target_pose_msg = PoseStamped()
+		# now = rospy.get_rostime()
+		# target_pose_msg.header.frame_id = 'world'
+		# target_pose_msg.header.stamp.secs = now.secs
+		# target_pose_msg.header.stamp.nsecs = now.nsecs
 
-		curr_x = self.pose.position.x
-		curr_y = self.pose.position.y
-		curr_z = self.pose.position.z
-		current_yaw = self.euler[2]
+		# curr_x = self.pose.position.x
+		# curr_y = self.pose.position.y
+		# curr_z = self.pose.position.z
+		# current_yaw = self.euler[2]
 
-		speed = 5
+		# speed = 5
 
-		action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
-		vel_x_body = speed*math.sin(action*(math.pi/10))
-		vel_y_body = speed*math.cos(action*(math.pi/10))
+		# action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
+		# vel_x_body = speed*math.sin(action*(math.pi/10))
+		# vel_y_body = speed*math.cos(action*(math.pi/10))
 
-		v_x = vel_y_body*math.sin(current_yaw) + vel_x_body*math.cos(current_yaw)
-		v_y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
+		# v_x = vel_y_body*math.sin(current_yaw) + vel_x_body*math.cos(current_yaw)
+		# v_y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
 
-		delta = 0.5
-		target_pose_msg.pose.position.x = curr_x + v_x*delta
-		target_pose_msg.pose.position.y = curr_y + v_y*delta
+		# delta = 0.2
+		# target_pose_msg.pose.position.x = curr_x + v_x*delta
+		# target_pose_msg.pose.position.y = curr_y + v_y*delta
 
-		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
-		print "current yaw", current_yaw
-		print "delta_x", v_x*delta, "delta_y", v_y*delta
+		# # quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+		# print "current yaw", current_yaw
+		# print "curr_x", curr_x, "curr_y", curr_y
+		# print "target_x", curr_x + v_x*delta, "target_y", curr_y + v_y*delta
+		# print "delta_x", v_x*delta, "delta_y", v_y*delta
+		# print "\n"
 
-		target_pose_msg.pose.position.z = curr_z
-		target_pose_msg.pose.orientation = self.pose.orientation
-		self.setpoint_pub.publish(target_pose_msg)
-		time.sleep(3)
+		# target_pose_msg.pose.position.z = curr_z
+		# target_pose_msg.pose.orientation = self.pose.orientation
+		# self.setpoint_pub.publish(target_pose_msg)
+		# time.sleep(0.2)
 	
 		######### RC ############## 
 
@@ -318,28 +322,31 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 
 		######### VELOCITY ############## 
-		# curr_x = self.pose.position.x
-		# current_yaw = self.euler[2]
-		# vel_cmd = TwistStamped()
-		# now = rospy.get_rostime()
-		# vel_cmd.header.stamp.secs = now.secs
-		# vel_cmd.header.stamp.nsecs = now.nsecs
+		curr_x = self.pose.position.x
+		current_yaw = self.euler[2]
+		vel_cmd = TwistStamped()
+		now = rospy.get_rostime()
+		vel_cmd.header.stamp.secs = now.secs
+		vel_cmd.header.stamp.nsecs = now.nsecs
 
-		# speed = 5
-		# pi = math.pi
+		speed = 1
+		pi = math.pi
 
-		# action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
-		# vel_x_body = speed*math.sin(action*(pi/10))
-		# vel_y_body = speed*math.cos(action*(pi/10))
+		action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
+		vel_x_body = speed*math.sin(action*(pi/10))
+		vel_y_body = speed*math.cos(action*(pi/10))
+		speed = 1
 
+		vel_cmd.twist.linear.x = vel_x_body
+		vel_cmd.twist.linear.y = vel_y_body
 		# vel_cmd.twist.linear.x = vel_y_body*math.sin(current_yaw) + vel_x_body*math.cos(current_yaw)
 		# vel_cmd.twist.linear.y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
-		# vel_cmd.twist.linear.z = 0
-		# # quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
-		# print "current yaw", current_yaw
-		# print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
-		# self.vel_pub.publish(vel_cmd)
-		# time.sleep(1)
+		vel_cmd.twist.linear.z = 0
+		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+		print "current yaw", current_yaw
+		print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
+		self.vel_pub.publish(vel_cmd)
+		time.sleep(0.2)
 	
 		observation = self._get_frame()
 		
