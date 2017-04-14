@@ -252,20 +252,20 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		if action == 0: #FORWARD
 			action_msg.channels[3] = mean_yaw_pwm  # Yaw
 		elif action == 1: 
-			action_msg.channels[3] = mean_yaw_pwm + delta # Yaw
+			action_msg.channels[3] = mean_yaw_pwm + delta
 		elif action == 2: 
-			action_msg.channels[3] = mean_yaw_pwm + delta*1  # Yaw
+			action_msg.channels[3] = mean_yaw_pwm + (delta*1)
 		elif action == 3: 
-			action_msg.channels[3] = mean_yaw_pwm + delta*2 #Yaw
+			action_msg.channels[3] = mean_yaw_pwm + (delta*2)
 		elif action == 4:
-			action_msg.channels[3] = mean_yaw_pwm - delta #Yaw
+			action_msg.channels[3] = mean_yaw_pwm - delta
 		elif action == 5:
-			action_msg.channels[3] = mean_yaw_pwm - delta*2 #Yaw
+			action_msg.channels[3] = mean_yaw_pwm - (delta*2)
 		elif action == 6:
-			action_msg.channels[3] = mean_yaw_pwm - delta*3 #Yaw
+			action_msg.channels[3] = mean_yaw_pwm - (delta*3)
 
-		action_msg.channels[1] = 1450 # Pitch
-		action_msg.channels[0] = 0 # Roll
+		action_msg.channels[0] = 1500 # Roll
+		action_msg.channels[1] = 1400 # Pitch
 		action_msg.channels[2] = 1500 # Throttle
 		action_msg.channels[4] = 0
 		action_msg.channels[5] = 0
@@ -273,12 +273,12 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		action_msg.channels[7] = 0
 
 		self.pub.publish(action_msg)
-		time.sleep(1)
+		time.sleep(0.5)
 
 		action_msg.channels[3] = 0
 		action_msg.channels[1] = 1500
 		self.pub.publish(action_msg)
-		time.sleep(1)
+		time.sleep(0.1)
 		# vel_cmd = TwistStamped()
 		# now = rospy.get_rostime()
 		# vel_cmd.header.stamp.secs = now.secs
@@ -377,7 +377,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		time.sleep(1)
 		alt_msg = None
 		erlecopter_alt = float('inf')
-		while erlecopter_alt > 0.1:
+		while erlecopter_alt > 0.01:
 			try:
 				alt_msg = rospy.wait_for_message('/mavros/global_position/rel_alt', Float64, timeout=10)
 				erlecopter_alt = alt_msg.data
@@ -472,7 +472,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 	def discretize_observation(self,data,new_ranges):
 		# print data
 		discretized_ranges = []
-		min_range = 2.5
+		min_range = 4.0
 		done = False
 		mod = len(data.ranges)/new_ranges
 		for i, item in enumerate(data.ranges):

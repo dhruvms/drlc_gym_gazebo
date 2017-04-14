@@ -186,6 +186,7 @@ class DQNAgent:
         self.log_dir = os.path.join(self.log_parent_dir, self.env_string, self.mode, current_timestamp)
         os.makedirs(self.log_dir)
         os.makedirs(os.path.join(self.log_dir, 'weights'))
+        os.makedirs(os.path.join(self.log_dir, 'replay_memory'))
         os.makedirs(os.path.join(self.log_dir, 'gym_monitor'))
         # create empty logfiles now
         self.log_files = {
@@ -330,17 +331,17 @@ class DQNAgent:
                 self.iter_ctr+=1 # number of steps overall
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
 
-                # logging
-                if not self.iter_ctr % 100:
-                    RED = '\033[91m'
-                    BOLD = '\033[1m'
-                    ENDC = '\033[0m'        
-                    LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
-                    str_1 = "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
-                    msg = "\n%s\n" % (LINE)
-                    msg += "%s%s\n" % (BOLD, str_1)
-                    msg += "%s\n" % (LINE)
-                    print(str(msg))
+                # # logging
+                # if not self.iter_ctr % 10:
+                #     RED = '\033[91m'
+                #     BOLD = '\033[1m'
+                #     ENDC = '\033[0m'        
+                #     LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
+                #     str_1 = "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                #     msg = "\n%s\n" % (LINE)
+                #     msg += "%s%s\n" % (BOLD, str_1)
+                #     msg += "%s\n" % (LINE)
+                #     print(str(msg))
 
                 # this appends to uint8 history and also returns stuff ready to be spit into the  network
                 state_network = self.preprocessor.process_state_for_network(state) #shape is (4,84,84,1). axis are swapped in cal_q_vals
@@ -364,8 +365,12 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
-                        print "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                        str_1 = "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
                                 (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        msg = "\n%s\n" % (LINE)
+                        msg += "%s%s\n" % (BOLD, str_1)
+                        msg += "%s\n" % (LINE)
+                        print(str(msg))
                         num_timesteps_in_curr_episode = 0
                         self.dump_train_episode_reward(total_reward_curr_episode)
                         # this should be called when num_timesteps_in_curr_episode > max_episode_length, but we can call it in is_terminal as well. 
@@ -390,7 +395,8 @@ class DQNAgent:
                     if not(self.iter_ctr%eval_every_nth):
                         print "\n\nEvaluating at iter {}".format(self.iter_ctr)
                         if not(self.iter_ctr%video_every_nth):
-                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                            # self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         else:
                             self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         print "Done Evaluating\n\n"
@@ -398,6 +404,9 @@ class DQNAgent:
                     # save model
                     if not(self.iter_ctr%save_model_every_nth):
                         self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
+                        output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.iter_ctr).zfill(7))), 'wb')
+                        pkl.dump(mydict, output)
+                        output.close()
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
@@ -405,8 +414,12 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
-                        print "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                        str_1 = "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
                                 (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        msg = "\n%s\n" % (LINE)
+                        msg += "%s%s\n" % (BOLD, str_1)
+                        msg += "%s\n" % (LINE)
+                        print(str(msg))
                         num_timesteps_in_curr_episode = 0
                         self.dump_train_episode_reward(total_reward_curr_episode)
                         self.replay_memory.end_episode() 
