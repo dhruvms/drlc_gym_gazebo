@@ -192,6 +192,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=1)
 		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
+		self.setpoint_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=10)
 		self.pose_subscriber = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_callback)
 
 		self.rtl_time = 5
@@ -205,7 +206,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			info.param_id = 'RTL_ALT'
 
 			val = ParamValue()
-			val.integer = 2
+			val.integer = 610
 			val.real = 0.0
 			info.value = val
 
@@ -239,37 +240,31 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# rospy.loginfo("Quat Orientation: [ %f, %f, %f, %f]"%(quat.x, quat.y, quat.z, quat.w))
 		euler = tf.transformations.euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
 		# rospy.loginfo("Euler Angles: %s"%str(euler))
+		self.pose = msg.pose
+		self.euler = euler
 
 	def _step(self, action):
 		print "Taking action", action
 		action_msg = OverrideRCIn()
 		mean_yaw_pwm = 1500
 		delta = 150
+
 		if action == 0: #FORWARD
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm  # Yaw
 		elif action == 1: 
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm + delta # Yaw
 		elif action == 2: 
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm + delta*1  # Yaw
 		elif action == 3: 
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm + delta*2 #Yaw
 		elif action == 4:
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm - delta #Yaw
 		elif action == 5:
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm - delta*2 #Yaw
 		elif action == 6:
-			action_msg.channels[1] = 1450 # Pitch
 			action_msg.channels[3] = mean_yaw_pwm - delta*3 #Yaw
-		elif action == 7:
-			action_msg.channels[1] = 1550 # Pitch
-			action_msg.channels[3] = mean_yaw_pwm #Yaw
 
+		action_msg.channels[1] = 1450 # Pitch
 		action_msg.channels[0] = 0 # Roll
 		action_msg.channels[2] = 1500 # Throttle
 		action_msg.channels[4] = 0
@@ -330,8 +325,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
 				frame = np.asarray(cv_image)
-				cv2.imshow('frame', frame)
-				cv2.waitKey(10)
+				# cv2.imshow('frame', frame)
+				# cv2.waitKey(1)
 				return frame
 			except:
 				raise ValueError('could not get frame')
@@ -367,56 +362,39 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 		
 	def _reset(self):
+		################# RTL ##################
+
 		# Resets the state of the environment and returns an initial observation.
-		# rospy.loginfo('Changing mode to RTL')
-		# # Set RTL mode
-		# rospy.wait_for_service('/mavros/set_mode')
-		# try:
-		# 	self.mode_proxy(0,'RTL')
-		# except rospy.ServiceException, e:
-		# 	print ("/mavros/set_mode service call failed: %s"%e)
+		rospy.loginfo('Changing mode to RTL')
+		# Set RTL mode
+		rospy.wait_for_service('/mavros/set_mode')
+		try:
+			self.mode_proxy(0,'RTL')
+		except rospy.ServiceException, e:
+			print ("/mavros/set_mode service call failed: %s"%e)
 
-		# rospy.loginfo('Waiting to land')
-		# time.sleep(self.rtl_time)
-		# alt_msg = None
-		# erlecopter_alt = float('inf')
-		# while erlecopter_alt > 0.3:
-		# 	try:
-		# 		alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
-		# 		erlecopter_index = 0
-		# 		for name in alt_msg.name:
-		# 			if name == "erlecopter":
-		# 				break
-		# 			else:
-		# 				erlecopter_index +=1
-		# 		erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
-		# 	except:
-		# 		pass
-		# while not self.disarm:
-		# 	pass
-
-		# rospy.loginfo('DISARMing throttle')
-		# # Disrm throttle
-		# rospy.wait_for_service('/mavros/cmd/arming')c
-		# try:
-		# 	self.arm_proxy(False)
-		# 	self.disarm = False
-		# except rospy.ServiceException, e:
-		# 	print ("/mavros/set_mode service call failed: %s"%e)
-
+		rospy.loginfo('Waiting to land')
 		time.sleep(1)
-		# self.msg.channels[0] = 0
-		# self.msg.channels[1] = 0
-		self.msg.channels[2] = 0
-		# self.msg.channels[3] = 0
-		# self.msg.channels[4] = 0
-		# self.msg.channels[5] = 0
-		# self.msg.channels[6] = 0
-		# self.msg.channels[7] = 0
-		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
-		self.pub.publish(self.msg)
+		alt_msg = None
+		erlecopter_alt = float('inf')
+		while erlecopter_alt > 0.1:
+			try:
+				alt_msg = rospy.wait_for_message('/mavros/global_position/rel_alt', Float64, timeout=10)
+				erlecopter_alt = alt_msg.data
+			except:
+				pass
 
-		time.sleep(2)
+		crash_msg = OverrideRCIn()
+		crash_msg.channels[0] = 0
+		crash_msg.channels[1] = 0
+		crash_msg.channels[2] = 0
+		crash_msg.channels[3] = 0
+		crash_msg.channels[4] = 0
+		crash_msg.channels[5] = 0
+		crash_msg.channels[6] = 0
+		crash_msg.channels[7] = 0
+		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
+		self.pub.publish(crash_msg)
 
 		rospy.loginfo('Changing mode to STABILIZE')
 		# Set STABILIZE mode
@@ -426,17 +404,68 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
 
-		time.sleep(2)
+		rospy.loginfo('DISARMing throttle')
+		rospy.wait_for_service('/mavros/cmd/arming')
+		try:
+			self.arm_proxy(False)
+		except rospy.ServiceException, e:
+			print ("/mavros/set_mode service call failed: %s"%e)
 
 		rospy.loginfo('Gazebo RESET')
 		self.reset_proxy()
 
-		time.sleep(self.reset_time)
-
 		self._takeoff(2)
-		
-		self.initial_latitude = None
-		self.initial_longitude = None
+
+		################# (DE)STABILIZE ##################
+		# time.sleep(1)
+		# # self.msg.channels[0] = 0
+		# # self.msg.channels[1] = 0
+		# self.msg.channels[2] = 0
+		# # self.msg.channels[3] = 0
+		# # self.msg.channels[4] = 0
+		# # self.msg.channels[5] = 0
+		# # self.msg.channels[6] = 0
+		# # self.msg.channels[7] = 0
+		# rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
+		# self.pub.publish(self.msg)
+
+		# time.sleep(2)
+
+		# rospy.loginfo('Changing mode to STABILIZE')
+		# # Set STABILIZE mode
+		# rospy.wait_for_service('/mavros/set_mode')
+		# try:
+		# 	self.mode_proxy(0,'STABILIZE')
+		# except rospy.ServiceException, e:
+		# 	print ("/mavros/set_mode service call failed: %s"%e)
+
+		# time.sleep(2)
+
+		# rospy.loginfo('Gazebo RESET')
+		# self.reset_proxy()
+
+		# time.sleep(self.reset_time)
+		# self._takeoff(2)
+
+		################# GHOST MODE ##################
+		# delta_yaw = 1.57
+		# target_yaw = self.euler[2] + delta_yaw
+		# print "old yaw", self.euler[2], "new yaw", target_yaw
+		# target_quat = tf.transformations.quaternion_from_euler(self.euler[0], self.euler[1], target_yaw)
+
+		# setpoint_msg = PoseStamped()
+		# now = rospy.get_rostime()
+		# setpoint_msg.header.stamp.secs = now.secs
+		# setpoint_msg.header.stamp.nsecs = now.nsecs
+
+		# setpoint_msg.pose = self.pose
+		# setpoint_msg.pose.orientation.x = target_quat[0]
+		# setpoint_msg.pose.orientation.y = target_quat[1]
+		# setpoint_msg.pose.orientation.z = target_quat[2]
+		# setpoint_msg.pose.orientation.w = target_quat[3]
+		# self.setpoint_pub.publish(setpoint_msg)
+		# print "sent new yaw. wait for 2 seconds"
+		# time.sleep(2)
 
 		return self._get_frame()
 

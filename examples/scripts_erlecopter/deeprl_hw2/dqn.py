@@ -331,8 +331,16 @@ class DQNAgent:
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
 
                 # logging
-                # if not self.iter_ctr % 1000:
-                    # print "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                if not self.iter_ctr % 100:
+                    RED = '\033[91m'
+                    BOLD = '\033[1m'
+                    ENDC = '\033[0m'        
+                    LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
+                    str_1 = "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                    msg = "\n%s\n" % (LINE)
+                    msg += "%s%s\n" % (BOLD, str_1)
+                    msg += "%s\n" % (LINE)
+                    print(str(msg))
 
                 # this appends to uint8 history and also returns stuff ready to be spit into the  network
                 state_network = self.preprocessor.process_state_for_network(state) #shape is (4,84,84,1). axis are swapped in cal_q_vals
@@ -351,7 +359,7 @@ class DQNAgent:
                     self.replay_memory.append(state_proc_memory, action, reward_proc, is_terminal)
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
-                        state = self.env.reset()
+                        # state = self.env.reset()
                         num_episodes += 1
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
@@ -392,7 +400,7 @@ class DQNAgent:
                         self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
-                        state = self.env.reset()
+                        # state = self.env.reset()
                         num_episodes += 1
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
