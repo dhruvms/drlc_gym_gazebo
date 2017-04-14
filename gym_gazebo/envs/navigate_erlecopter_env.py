@@ -25,7 +25,6 @@ from geometry_msgs.msg import PoseStamped
 import tf
 
 class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
-
 	def _takeoff(self, altitude):
 		print "Waiting for mavros..."
 		data = None
@@ -182,9 +181,6 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self.action_space = spaces.Discrete(7) # F, L, R, B
 		self.reward_range = (-np.inf, np.inf)
 
-		self.max_distance = 1.6
-		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
-
 		# self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 		# self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
@@ -193,7 +189,9 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self.param_get_proxy = rospy.ServiceProxy('/mavros/param/get', ParamGet)
 		self.arm_proxy = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
 		self.takeoff_proxy = rospy.ServiceProxy('/mavros/cmd/takeoff', CommandTOL)
+
 		self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=1)
+		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
 		self.pose_subscriber = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_callback)
 
 		self.rtl_time = 5
@@ -212,8 +210,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			info.value = val
 
 			self.param_set_proxy(info.param_id, info.value)
-
 			rospy.loginfo('Changed RTL_ALT to %d', val.integer)
+
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
 
@@ -231,8 +229,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self.np_random, seed = seeding.np_random(seed)
 		return [seed]
 
-	def _state(self, action):
-		return discretized_ranges, done
+	# def _state(self, action):
+	# 	return discretized_ranges, done
 
 	def pose_callback(self, msg):
 		position = msg.pose.position
@@ -243,45 +241,49 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# rospy.loginfo("Euler Angles: %s"%str(euler))
 
 	def _step(self, action):
-
 		print "Taking action", action
-		self.msg = OverrideRCIn()
+		action_msg = OverrideRCIn()
 		mean_yaw_pwm = 1500
-		delta = 50
+		delta = 150
 		if action == 0: #FORWARD
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm  # Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm  # Yaw
 		elif action == 1: 
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm + delta # Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm + delta # Yaw
 		elif action == 2: 
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm + delta*1  # Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm + delta*1  # Yaw
 		elif action == 3: 
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm + delta*2 #Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm + delta*2 #Yaw
 		elif action == 4:
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm - delta #Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm - delta #Yaw
 		elif action == 5:
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm - delta*2 #Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm - delta*2 #Yaw
 		elif action == 6:
-			self.msg.channels[1] = 1450 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm - delta*3 #Yaw
+			action_msg.channels[1] = 1450 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm - delta*3 #Yaw
 		elif action == 7:
-			self.msg.channels[1] = 1550 # Pitch
-			self.msg.channels[3] = mean_yaw_pwm #Yaw
+			action_msg.channels[1] = 1550 # Pitch
+			action_msg.channels[3] = mean_yaw_pwm #Yaw
 
-		self.msg.channels[0] = 0 # Roll
-		self.msg.channels[2] = 1500 # Throttle
-		self.msg.channels[4] = 0
-		self.msg.channels[5] = 0
-		self.msg.channels[6] = 0
-		self.msg.channels[7] = 0
+		action_msg.channels[0] = 0 # Roll
+		action_msg.channels[2] = 1500 # Throttle
+		action_msg.channels[4] = 0
+		action_msg.channels[5] = 0
+		action_msg.channels[6] = 0
+		action_msg.channels[7] = 0
 
-		self.pub.publish(self.msg)
+		self.pub.publish(action_msg)
+		time.sleep(1)
 
+		action_msg.channels[3] = 0
+		action_msg.channels[1] = 1500
+		self.pub.publish(action_msg)
+		time.sleep(1)
 		# vel_cmd = TwistStamped()
 		# now = rospy.get_rostime()
 		# vel_cmd.header.stamp.secs = now.secs
@@ -334,29 +336,97 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except:
 				raise ValueError('could not get frame')
 
+	# def _relaunch_apm(self):
+	# 	pids = subprocess.check_output(["pidof","ArduCopter.elf"]).split()
+	# 	for pid in pids:
+	# 		os.system("kill -9 "+str(pid))
+	# 	grep_cmd = "ps -ef | grep ardupilot"
+	# 	result = subprocess.check_output([grep_cmd], shell=True).split()
+	# 	pid = result[1]
+	# 	os.system("kill -9 "+str(pid))
+	# 	grep_cmd = "ps -af | grep sim_vehicle.sh"
+	# 	result = subprocess.check_output([grep_cmd], shell=True).split()
+	# 	pid = result[1]
+	# 	os.system("kill -9 "+str(pid))
+	# 	self._launch_apm()
+
+	# def _reset(self):
+	# 	# Resets the state of the environment and returns an initial observation.
+	# 	rospy.wait_for_service('/gazebo/reset_world')
+	# 	try:
+	# 		#reset_proxy.call()
+	# 		self.reset_proxy()
+	# 	except rospy.ServiceException, e:
+	# 		print ("/gazebo/reset_world service call failed")
+	# 	# Relaunch autopilot
+	# 	self._relaunch_apm()
+	# 	self._takeoff(2)
+	# 	self.initial_latitude = None
+	# 	self.initial_longitude = None
+	# 	return self._get_frame()
+
+		
 	def _reset(self):
-		self.msg.channels[0] = 0
-		self.msg.channels[1] = 0
+		# Resets the state of the environment and returns an initial observation.
+		# rospy.loginfo('Changing mode to RTL')
+		# # Set RTL mode
+		# rospy.wait_for_service('/mavros/set_mode')
+		# try:
+		# 	self.mode_proxy(0,'RTL')
+		# except rospy.ServiceException, e:
+		# 	print ("/mavros/set_mode service call failed: %s"%e)
+
+		# rospy.loginfo('Waiting to land')
+		# time.sleep(self.rtl_time)
+		# alt_msg = None
+		# erlecopter_alt = float('inf')
+		# while erlecopter_alt > 0.3:
+		# 	try:
+		# 		alt_msg = rospy.wait_for_message('/gazebo/model_states', ModelStates, timeout=10)
+		# 		erlecopter_index = 0
+		# 		for name in alt_msg.name:
+		# 			if name == "erlecopter":
+		# 				break
+		# 			else:
+		# 				erlecopter_index +=1
+		# 		erlecopter_alt = alt_msg.pose[erlecopter_index].position.z
+		# 	except:
+		# 		pass
+		# while not self.disarm:
+		# 	pass
+
+		# rospy.loginfo('DISARMing throttle')
+		# # Disrm throttle
+		# rospy.wait_for_service('/mavros/cmd/arming')c
+		# try:
+		# 	self.arm_proxy(False)
+		# 	self.disarm = False
+		# except rospy.ServiceException, e:
+		# 	print ("/mavros/set_mode service call failed: %s"%e)
+
+		time.sleep(1)
+		# self.msg.channels[0] = 0
+		# self.msg.channels[1] = 0
 		self.msg.channels[2] = 0
-		self.msg.channels[3] = 0
-		self.msg.channels[4] = 0
-		self.msg.channels[5] = 0
-		self.msg.channels[6] = 0
-		self.msg.channels[7] = 0
+		# self.msg.channels[3] = 0
+		# self.msg.channels[4] = 0
+		# self.msg.channels[5] = 0
+		# self.msg.channels[6] = 0
+		# self.msg.channels[7] = 0
 		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
 		self.pub.publish(self.msg)
 
-		time.sleep(5)
+		time.sleep(2)
 
-		rospy.loginfo('Changing mode to RTL')
-		# Set RTL mode
+		rospy.loginfo('Changing mode to STABILIZE')
+		# Set STABILIZE mode
 		rospy.wait_for_service('/mavros/set_mode')
 		try:
-			self.mode_proxy(0,'RTL')
+			self.mode_proxy(0,'STABILIZE')
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
 
-		time.sleep(1)
+		time.sleep(2)
 
 		rospy.loginfo('Gazebo RESET')
 		self.reset_proxy()

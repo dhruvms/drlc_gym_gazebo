@@ -384,11 +384,11 @@ class GazeboErleCopterHoverEnv(gazebo_env.GazeboEnv):
 
         time.sleep(1)
 
-        rospy.loginfo('Changing mode to RTL')
-        # Set RTL mode
+        rospy.loginfo('Changing mode to STABILIZE')
+        # Set STABILIZE mode
         rospy.wait_for_service('/mavros/set_mode')
         try:
-            self.mode_proxy(0,'RTL')
+            self.mode_proxy(0,'STABILIZE')
         except rospy.ServiceException, e:
             print ("/mavros/set_mode service call failed: %s"%e)
 
