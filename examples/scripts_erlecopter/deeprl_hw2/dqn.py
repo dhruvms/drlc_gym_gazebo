@@ -186,6 +186,7 @@ class DQNAgent:
         self.log_dir = os.path.join(self.log_parent_dir, self.env_string, self.mode, current_timestamp)
         os.makedirs(self.log_dir)
         os.makedirs(os.path.join(self.log_dir, 'weights'))
+        os.makedirs(os.path.join(self.log_dir, 'replay_memory'))
         os.makedirs(os.path.join(self.log_dir, 'gym_monitor'))
         # create empty logfiles now
         self.log_files = {
@@ -331,7 +332,7 @@ class DQNAgent:
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
 
                 # logging
-                if not self.iter_ctr % 100:
+                if not self.iter_ctr % 10:
                     RED = '\033[91m'
                     BOLD = '\033[1m'
                     ENDC = '\033[0m'        
@@ -390,7 +391,8 @@ class DQNAgent:
                     if not(self.iter_ctr%eval_every_nth):
                         print "\n\nEvaluating at iter {}".format(self.iter_ctr)
                         if not(self.iter_ctr%video_every_nth):
-                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                            # self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         else:
                             self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         print "Done Evaluating\n\n"
@@ -398,6 +400,9 @@ class DQNAgent:
                     # save model
                     if not(self.iter_ctr%save_model_every_nth):
                         self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
+                        output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.iter_ctr).zfill(7))), 'wb')
+                        pkl.dump(mydict, output)
+                        output.close()
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
