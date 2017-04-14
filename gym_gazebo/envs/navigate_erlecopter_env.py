@@ -48,6 +48,14 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 					start = time.time()
 				except rospy.ServiceException, e:
 					print ("/mavros/set_mode service call failed: %s"%e)
+				
+				rospy.loginfo('DISARMing throttle')
+				rospy.wait_for_service('/mavros/cmd/arming')
+				try:
+					self.arm_proxy(False)
+				except rospy.ServiceException, e:
+					print ("/mavros/set_mode service call failed: %s"%e)
+
 
 			print "Taking off..."
 			alt = altitude
@@ -526,7 +534,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 	def discretize_observation(self,data,new_ranges):
 		# print data
 		discretized_ranges = []
-		min_range = 2.5
+		min_range = 2.0
 		done = False
 		mod = len(data.ranges)/new_ranges
 		for i, item in enumerate(data.ranges):
