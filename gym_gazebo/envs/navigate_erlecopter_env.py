@@ -24,7 +24,7 @@ from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 import tf
 
-class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
+class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv): 
 	def _takeoff(self, altitude):
 		print "Waiting for mavros..."
 		data = None
@@ -168,6 +168,14 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		programPause = raw_input(str(msg))
 
 	def __init__(self):
+		# dem MDP rewards tho
+		self.MIN_LASER_DEFINING_CRASH = 2.0
+		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 4.0
+		self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD = 0.0
+		self.REWARD_AT_LASER_JUST_BEFORE_CRASH = -10.0
+		self.REWARD_AT_CRASH = -200
+		self.REWARD_FOR_FLYING_SAFE = 1.0 # at each time step
+		self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE = 5.0
 
 		self._launch_apm()
 
@@ -341,9 +349,11 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		speed = 1
 
 		delta_theta_deg = 10
-		action = action - ((self.num_actions-1)/2) # 4 is forward, 0-3 are to left(now -3 to -1), separated by 10 deg each. 
-		vel_x_body = speed*math.sin(action*(math.radians(delta_theta_deg)))
-		vel_y_body = speed*math.cos(action*(math.radians(delta_theta_deg)))
+		# 4 is forward, 0-3 are to left, 5-8 are right. all separated by 10 deg each.
+		action_norm = action - ((self.num_actions-1)/2)
+		# 0 is forward in action_norm. negatives are left
+		vel_x_body = speed*math.sin(action_norm*(math.radians(delta_theta_deg)))
+		vel_y_body = speed*math.cos(action_norm*(math.radians(delta_theta_deg)))
 		speed = 1
 
 		vel_cmd.twist.linear.x = vel_x_body
@@ -352,8 +362,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# vel_cmd.twist.linear.y = vel_y_body*math.cos(current_yaw) - vel_x_body*math.sin(current_yaw)
 		vel_cmd.twist.linear.z = 0
 		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
-		print "current yaw", current_yaw
-		print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
+		# print "current yaw", current_yaw
+		print "taking action_norm", action_norm, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
 		time.sleep(0.1)
 	
@@ -367,17 +377,29 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 				pass
 
 		# is_terminal = self.check_terminal(data)
-		print "min laser", np.min(data.ranges)
+		min_laser_scan = np.min(data.ranges)
+		print "min laser", min_laser_scan
 		# print "max laser", np.max(data.ranges)
 		state, is_terminal = self.discretize_observation(data,len(data.ranges))
 
+		# if still alive
 		if not is_terminal:
-			if action == 0:
-				reward = 5
+			# if obstacles are faraway
+			if min_laser_scan > self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD:
+				# if flying forward
+				if action_norm == 0:
+					reward = self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE
+				else:
+					reward = self.REWARD_FOR_FLYING_SAFE
 			else:
-				reward = 1
+				# if obstacles are near, -20 for MIN_LASER_DEFINING_CRASH, 0 for MIN_LASER_DEFINING_NEGATIVE_REWARD 
+				# y = y1 + (y2-y1)/(x2-x1) * (x-x1)
+				reward = self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD + \
+						((self.REWARD_AT_LASER_JUST_BEFORE_CRASH - self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD)/ \
+						(self.MIN_LASER_DEFINING_CRASH - self.MIN_LASER_DEFINING_NEGATIVE_REWARD)* \
+						(min_laser_scan - self.MIN_LASER_DEFINING_NEGATIVE_REWARD))
 		else:
-			reward = -200
+			reward = self.REWARD_AT_CRASH
 
 		return observation, reward, is_terminal, {}	
 
@@ -535,7 +557,6 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 	def discretize_observation(self,data,new_ranges):
 		# print data
 		discretized_ranges = []
-		min_range = 2.0
 		done = False
 		mod = len(data.ranges)/new_ranges
 		for i, item in enumerate(data.ranges):
@@ -546,6 +567,6 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 					discretized_ranges.append(0)
 				else:
 					discretized_ranges.append(int(data.ranges[i]))
-			if (min_range > data.ranges[i] > 0):
+			if (self.MIN_LASER_DEFINING_CRASH > data.ranges[i] > 0):
 				done = True
 		return discretized_ranges,done
