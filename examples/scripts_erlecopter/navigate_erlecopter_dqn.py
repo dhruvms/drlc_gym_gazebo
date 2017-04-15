@@ -22,9 +22,13 @@ def main():  # noqa: D103
     parser.add_argument('--env', default='GazeboErleCopterNavigate-v0', help='Atari env name')
     parser.add_argument('--mode', default='vanilla', type=str, help='vanilla or double dqn')
     parser.add_argument('--question', default='deep', type=str, help='q2, q3, q4, deep, q7, eval_table')
+    parser.add_argument('--resume_dir', default=None, type=str, help='resume dir')
 
     args = parser.parse_args()
     print " MODE IS", args.mode
+
+    print "resum" ,args.resume_dir
+    print(args.resume_dir is None)
 
     if args.question=="q2":
         from deeprl_hw2.dqn_q2 import DQNAgent
@@ -36,6 +40,8 @@ def main():  # noqa: D103
         from deeprl_hw2.dqn_q7 import DQNAgent
     elif args.question=="eval_table":
         from deeprl_hw2.evaluation_table import DQNAgent
+    elif args.resume_dir is not None:
+        from deeprl_hw2.dqn_resume import DQNAgent
     else:
         from deeprl_hw2.dqn import DQNAgent
 
@@ -51,8 +57,13 @@ def main():  # noqa: D103
         args.env = 'Enduro-v0'
         video_every_nth = 50000
         eval_every_nth = 50000        
-        
-    agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=5000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode)
+
+    if args.resume_dir is not None:
+        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=5000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode, 
+                        resume_dir=args.resume_dir)
+    else:
+        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=5000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode)
+
     agent.fit(num_iterations = int(5e6), max_episode_length=1500, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
 
 if __name__ == '__main__':

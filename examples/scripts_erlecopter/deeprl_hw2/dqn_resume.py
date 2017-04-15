@@ -71,6 +71,7 @@ class DQNAgent:
                  train_freq,
                  batch_size,
                  mode,
+                 resume_dir,
                  log_parent_dir = '/home/vaibhav/madratman/logs/project/dqn'):
 
         self.env_string = env
@@ -81,7 +82,8 @@ class DQNAgent:
         self.num_burn_in = num_burn_in
         self.train_freq = train_freq
         self.batch_size = batch_size
-        self.iter_ctr = 0
+        if resume_dir is None:
+            self.iter_ctr = 0
 
         self.eval_episode_ctr = 0
         self.preprocessor = preprocessors.PreprocessorSequence()
@@ -93,7 +95,12 @@ class DQNAgent:
         self.loss_last = None
         self.mode = mode
         self.log_parent_dir = log_parent_dir
-        self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
+        # self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
+        if resume_dir is not None:
+            print "resuming from ", resume_dir
+            self.resume_from_log_dir(resume_dir)
+            self.is_resume=True
+        print "self.is_resume", self.is_resume
 
     def create_model(self):  # noqa: D103
         """Create the Q-network model.
@@ -138,7 +145,7 @@ class DQNAgent:
 
         return model
 
-    def compile(self):
+    def compile(self, is_resum=False):
         """Setup all of the TF graph variables/ops.
 
         This is inspired by the compile method on the
@@ -163,10 +170,25 @@ class DQNAgent:
         adam = Adam(lr=1e-4)
         self.q_network.compile(loss=mean_huber_loss, optimizer=adam) 
         self.target_q_network.compile(loss=mean_huber_loss, optimizer=adam)
-        
         # set the same weights for both initially
         self.target_q_network.set_weights(self.q_network.get_weights())
-        
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        ENDC = '\033[0m'        
+        LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
+
+        if self.is_resume:
+            last_weight_file = sorted(os.listdir(os.path.join(self.log_dir, 'weights')))[-1]
+            second_last_weight_file = sorted(os.listdir(os.path.join(self.log_dir, 'weights')))[-2]
+            str_1 = "Loading q_net from " + os.path.join(self.log_dir, 'weights', last_weight_file)
+            str_1 = str_1 + '\n' + "Loading target_q_net from" + os.path.join(self.log_dir, 'weights', second_last_weight_file)
+            msg = "\n%s\n" % (LINE)
+            msg += "%s%s\n" % (BOLD, str_1)
+            msg += "%s\n" % (LINE)
+            print(str(msg))
+            self.target_q_network.load_weights(os.path.join(self.log_dir, 'weights',second_last_weight_file))
+            self.q_network.load_weights(os.path.join(self.log_dir, 'weights',last_weight_file))
+
         print self.q_network.summary()
 
     def calc_q_values(self, state):
@@ -197,6 +219,20 @@ class DQNAgent:
 
         for key in self.log_files:
             open(os.path.join(self.log_dir, self.log_files[key]), 'a').close()
+
+    def resume_from_log_dir(self, resume_dir):
+        self.log_dir = resume_dir
+        self.log_files = {
+                            'train_loss': os.path.join(self.log_dir, 'train_loss.txt'),
+                            'train_episode_reward': os.path.join(self.log_dir, 'train_episode_reward.txt'),
+                            'test_episode_reward': os.path.join(self.log_dir, 'test_episode_reward.txt')
+                          }
+        #picks the last replay memory(with most iters acc to file name)
+        latest_replay_memory_file = sorted(os.listdir(os.path.join(self.log_dir, 'replay_memory')))[-1]
+        with open(os.path.join(self.log_dir, 'replay_memory', latest_replay_memory_file), 'rb') as f:
+            self.replay_memory = pkl.load(f)
+        self.iter_ctr = int(latest_replay_memory_file.split('.')[0].split('_')[-1])
+        print "self.iter_ctr", self.iter_ctr 
 
     def dump_train_loss(self, loss):
         self.loss_last = loss
@@ -309,14 +345,14 @@ class DQNAgent:
           How long a single episode should last before the agent
           resets. Can help exploration.
         """
-        self.compile()
+        self.compile(self.is_resume)
         self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=1e6, num_actions=self.num_actions) # for training
-        self.replay_memory = ReplayMemory(max_size=1000000)
+        self.policy.epsilon = 1.0 - ((1 - 0.1) / 1e6 * self.iter_ctr)
         self.log_loss_every_nth = log_loss_every_nth
         random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
         num_episodes = 0
 
-        # tf logging
+        # tf logging # todo how to resume
         self.tf_session = K.get_session()
         self.tf_summary_writer = tf.summary.FileWriter(self.log_dir, self.tf_session.graph)
 
