@@ -69,7 +69,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-			time.sleep(1)
+			time.sleep(0.1)
 
 			rospy.loginfo('ARMing throttle')
 			# Arm throttle
@@ -79,7 +79,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-			time.sleep(1)
+			time.sleep(0.1)
 			
 			rospy.loginfo('TAKEOFF to %d meters', alt)
 			# Takeoff
@@ -89,7 +89,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/cmd/takeoff service call failed: %s"%e)
 
-			time.sleep(alt)
+			# time.sleep(alt)
 
 			alt_msg = None
 			while alt_msg is None:
@@ -136,7 +136,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-		time.sleep(1)
+		time.sleep(0.1)
 
 		self.msg = OverrideRCIn()
 		self.msg.channels[0] = 0 # Roll
@@ -150,7 +150,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
 		self.pub.publish(self.msg)
 
-		time.sleep(1)
+		time.sleep(0.1)
 
 		# rospy.loginfo('Changing mode to ALT_HOLD')
 		# # Set ALT_HOLD mode
@@ -162,7 +162,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 	def _launch_apm(self):
 		sim_vehicle_sh = str(os.environ["ARDUPILOT_PATH"]) + "/Tools/autotest/sim_vehicle.sh"
-		subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo","-v","ArduCopter"])
+		subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo", "-S10", "-v","ArduCopter"])
 
 	def _pause(self, msg):
 		programPause = raw_input(str(msg))
@@ -355,7 +355,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		print "current yaw", current_yaw
 		print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(0.5)
+		time.sleep(0.1)
 	
 		observation = self._get_frame()
 		
@@ -388,8 +388,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
 				frame = np.asarray(cv_image)
-				# cv2.imshow('frame', frame)
-				# cv2.waitKey(1)
+				cv2.imshow('frame', frame)
+				cv2.waitKey(1)
 				return frame
 			except:
 				raise ValueError('could not get frame')
