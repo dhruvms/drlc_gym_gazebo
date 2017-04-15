@@ -400,16 +400,20 @@ class DQNAgent:
                         print "\n\nEvaluating at iter {}".format(self.iter_ctr)
                         if not(self.iter_ctr%video_every_nth):
                             # self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
-                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
+                            self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
                         else:
-                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
+                            self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
                         print "Done Evaluating\n\n"
 
                     # save model
                     if not(self.iter_ctr%save_model_every_nth):
                         self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
                         output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.iter_ctr).zfill(7))), 'wb')
-                        pkl.dump(mydict, output)
+                        
+                        # THIS LINE GAVE ERROR BECAUSE MYDICT DOES NOT EXIST
+                        # pkl.dump(mydict, output)
+                        
+                        pkl.dump(self.replay_memory, output)
                         output.close()
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
@@ -449,7 +453,7 @@ class DQNAgent:
         """
         evaluation_policy = GreedyPolicy()
         eval_preprocessor = preprocessors.PreprocessorSequence()
-        env_valid = gym.make(self.env_string)
+        # env_valid = gym.make(self.env_string)
 
         iter_ctr_valid = 0
         Q_sum = 0
@@ -464,7 +468,7 @@ class DQNAgent:
             env_valid = wrappers.Monitor(env_valid, video_dir, video_callable=lambda x:True, mode='evaluation')
 
         while eval_episode_ctr_valid < num_episodes:
-            state = env_valid.reset()
+            state = self.env.reset()
             eval_preprocessor.reset_history_memory()
             num_timesteps_in_curr_episode = 0
             total_reward_curr_episode = 0.0
@@ -478,7 +482,7 @@ class DQNAgent:
                 Q_sum += np.max(q_values) # todo fix this
 
                 action = evaluation_policy.select_action(q_values)
-                next_state, reward, is_terminal, _ = env_valid.step(action)
+                next_state, reward, is_terminal, _ = self.env.step(action)
                 total_reward_curr_episode += reward
                 # print "Evalution : timestep {}, episode {}, action {}, reward {}, total_reward {}"\
                         # .format(iter_ctr_valid, eval_episode_ctr_valid, action, reward, total_reward_curr_episode)

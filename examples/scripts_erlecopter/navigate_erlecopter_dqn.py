@@ -40,7 +40,7 @@ def main():  # noqa: D103
         from deeprl_hw2.dqn import DQNAgent
 
     video_every_nth = 500
-    eval_every_nth = 1000
+    eval_every_nth = 5000
 
     if args.env == "breakout":
         args.env = 'Breakout-v0'
@@ -52,7 +52,7 @@ def main():  # noqa: D103
         video_every_nth = 50000
         eval_every_nth = 50000        
         
-    agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=1000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode)
+    agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=5000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode)
     agent.fit(num_iterations = int(5e6), max_episode_length=1500, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
 
 if __name__ == '__main__':

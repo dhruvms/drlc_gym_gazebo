@@ -186,7 +186,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# Launch the simulation with the given launchfile name
 		gazebo_env.GazeboEnv.__init__(self, "GazeboErleCopterHover-v0.launch")    
 
-		self.action_space = spaces.Discrete(7) # F, L, R, B
+		self.num_actions = 9
+		self.action_space = spaces.Discrete(self.num_actions) # F, L, R, B
 		self.reward_range = (-np.inf, np.inf)
 
 		# self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
@@ -199,7 +200,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self.takeoff_proxy = rospy.ServiceProxy('/mavros/cmd/takeoff', CommandTOL)
 
 		self.pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=1)
-		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10, latch=True)
+		self.vel_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10, latch=False)
 		self.setpoint_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=10, latch=True)
 		self.pose_subscriber = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_callback)
 
@@ -338,11 +339,11 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		vel_cmd.header.stamp.nsecs = now.nsecs
 
 		speed = 1
-		pi = math.pi
 
-		action = action - 3 # 3 is forward, 0,1,2 are to left, separated by 10 deg each
-		vel_x_body = speed*math.sin(action*(pi/10))
-		vel_y_body = speed*math.cos(action*(pi/10))
+		delta_theta_deg = 10
+		action = action - ((self.num_actions-1)/2) # 4 is forward, 0-3 are to left(now -3 to -1), separated by 10 deg each. 
+		vel_x_body = speed*math.sin(action*(math.radians(delta_theta_deg)))
+		vel_y_body = speed*math.cos(action*(math.radians(delta_theta_deg)))
 		speed = 1
 
 		vel_cmd.twist.linear.x = vel_x_body
@@ -354,7 +355,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		print "current yaw", current_yaw
 		print "taking action", action, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(0.2)
+		time.sleep(0.5)
 	
 		observation = self._get_frame()
 		
