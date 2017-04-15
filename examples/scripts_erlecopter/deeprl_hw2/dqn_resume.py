@@ -266,7 +266,7 @@ class DQNAgent:
             else:
                 if self.mode == 'vanilla':
                     y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*np.max(q_next[idx])
-                if self.mode == 'double':				
+                if self.mode == 'double':               
                     y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*q_next[idx, np.argmax(q_current[idx])] 
 
         loss = self.q_network.train_on_batch(current_state_images, np.float32(y_targets_all))
