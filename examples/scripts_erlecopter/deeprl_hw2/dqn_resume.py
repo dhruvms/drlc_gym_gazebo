@@ -239,15 +239,15 @@ class DQNAgent:
     def dump_train_loss(self, loss):
         self.loss_last = loss
         with open(self.log_files['train_loss'], "a") as f:
-            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(loss) + '\n')
+            f.write(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(loss) + '\n')
 
     def dump_train_episode_reward(self, episode_reward):
         with open(self.log_files['train_episode_reward'], "a") as f:
-            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(episode_reward) + '\n')
+            f.write(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
 
     def dump_test_episode_reward(self, episode_reward):
         with open(self.log_files['test_episode_reward'], "a") as f:
-            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(episode_reward) + '\n')
+            f.write(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
 
     # ref http://stackoverflow.com/questions/37902705/how-to-manually-create-a-tf-summary 
     # https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514#file-tensorboard_logging-py-L41

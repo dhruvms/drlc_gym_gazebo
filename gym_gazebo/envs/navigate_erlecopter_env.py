@@ -525,7 +525,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		time.sleep(1)
 		alt_msg = None
 		erlecopter_alt = float('inf')
-		while erlecopter_alt > 0.01:
+		while erlecopter_alt > 0.1:
 			try:
 				alt_msg = rospy.wait_for_message('/mavros/global_position/rel_alt', Float64, timeout=10)
 				erlecopter_alt = alt_msg.data
