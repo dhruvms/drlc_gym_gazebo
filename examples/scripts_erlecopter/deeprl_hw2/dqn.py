@@ -81,7 +81,7 @@ class DQNAgent:
         self.num_burn_in = num_burn_in
         self.train_freq = train_freq
         self.batch_size = batch_size
-        self.iter_ctr = 0
+        self.train_iter_ctr = 0
 
         self.eval_episode_ctr = 0
         self.preprocessor = preprocessors.PreprocessorSequence()
@@ -201,15 +201,15 @@ class DQNAgent:
     def dump_train_loss(self, loss):
         self.loss_last = loss
         with open(self.log_files['train_loss'], "a") as f:
-            f.write(str(loss) + '\n')
+            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(loss) + '\n')
 
     def dump_train_episode_reward(self, episode_reward):
         with open(self.log_files['train_episode_reward'], "a") as f:
-            f.write(str(episode_reward) + '\n')
+            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(episode_reward) + '\n')
 
     def dump_test_episode_reward(self, episode_reward):
         with open(self.log_files['test_episode_reward'], "a") as f:
-            f.write(str(episode_reward) + '\n')
+            f.write(str(self.train_iter_ctr) + str(self.train_episode_ctr) + str(episode_reward) + '\n')
 
     # ref http://stackoverflow.com/questions/37902705/how-to-manually-create-a-tf-summary 
     # https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514#file-tensorboard_logging-py-L41
@@ -272,14 +272,14 @@ class DQNAgent:
         loss = self.q_network.train_on_batch(current_state_images, np.float32(y_targets_all))
 
         with tf.name_scope('summaries'):
-            self.tf_log_scaler(tag='train_loss', value=loss, step=self.iter_ctr)
+            self.tf_log_scaler(tag='train_loss', value=loss, step=self.train_iter_ctr)
 
-        if not (self.iter_ctr % self.log_loss_every_nth):
+        if not (self.train_iter_ctr % self.log_loss_every_nth):
             self.dump_train_loss(loss)
 
-        if (self.iter_ctr > (self.num_burn_in+1)) and not(self.iter_ctr%self.target_update_freq):
+        if (self.train_iter_ctr > (self.num_burn_in+1)) and not(self.train_iter_ctr%self.target_update_freq):
             # copy weights
-            print "Iter {} Updating target Q network".format(self.iter_ctr)
+            print "Iter {} Updating target Q network".format(self.train_iter_ctr)
             self.target_q_network.set_weights(self.q_network.get_weights())
             # [self.target_q_network.trainable_weights[i].assign(self.q_network.trainable_weights[i]) \
             #     for i in range(len(self.target_q_network.trainable_weights))]
@@ -310,17 +310,17 @@ class DQNAgent:
           resets. Can help exploration.
         """
         self.compile()
-        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=1e6, num_actions=self.num_actions) # for training
+        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=100000, num_actions=self.num_actions) # for training
         self.replay_memory = ReplayMemory(max_size=1000000)
         self.log_loss_every_nth = log_loss_every_nth
         random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
-        num_episodes = 0
+        self.train_episode_ctr = 0
 
         # tf logging
         self.tf_session = K.get_session()
         self.tf_summary_writer = tf.summary.FileWriter(self.log_dir, self.tf_session.graph)
 
-        while self.iter_ctr < num_iterations:
+        while self.train_iter_ctr < num_iterations:
             state = self.env.reset()
             self.preprocessor.reset_history_memory()
 
@@ -328,7 +328,7 @@ class DQNAgent:
             total_reward_curr_episode = 0       
 
             while num_timesteps_in_curr_episode < max_episode_length:
-                self.iter_ctr+=1 # number of steps overall
+                self.train_iter_ctr+=1 # number of steps overall
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
                 RED = '\033[91m'
                 BOLD = '\033[1m'
@@ -336,12 +336,12 @@ class DQNAgent:
                 LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
 
                 # # logging
-                # if not self.iter_ctr % 10:
+                # if not self.train_iter_ctr % 10:
                 #     RED = '\033[91m'
                 #     BOLD = '\033[1m'
                 #     ENDC = '\033[0m'        
                 #     LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
-                #     str_1 = "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                #     str_1 = "iter_ctr {}, self.train_episode_ctr : {} num_timesteps_in_curr_episode {}".format(self.train_iter_ctr, self.train_episode_ctr, num_timesteps_in_curr_episode)
                 #     msg = "\n%s\n" % (LINE)
                 #     msg += "%s%s\n" % (BOLD, str_1)
                 #     msg += "%s\n" % (LINE)
@@ -352,7 +352,7 @@ class DQNAgent:
                 # print "shape {}, max {}, min {}, type {} ".format(state_network.shape, np.max(state_network), np.min(state_network), state_network.dtype)
 
                 # burning in 
-                if self.iter_ctr < self.num_burn_in:
+                if self.train_iter_ctr < self.num_burn_in:
                     action = random_policy.select_action() # goes from 0 to n-1
                     # print "\ntaking action", action, "\n"
 
@@ -364,12 +364,12 @@ class DQNAgent:
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
-                        num_episodes += 1
+                        self.train_episode_ctr += 1
                         with tf.name_scope('summaries'):
-                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
-                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
-                        str_1 = "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
+                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -383,7 +383,7 @@ class DQNAgent:
 
                 # training
                 else:
-                    # print "iter_ctr {}, num_episodes : {} num_timesteps_in_curr_episode {}".format(self.iter_ctr, num_episodes, num_timesteps_in_curr_episode)
+                    # print "iter_ctr {}, self.train_episode_ctr : {} num_timesteps_in_curr_episode {}".format(self.train_iter_ctr, self.train_episode_ctr, num_timesteps_in_curr_episode)
                     q_values = self.calc_q_values(state_network)
                     # print "q_values {} q_values.shape {}".format(q_values, q_values.shape)
                     #print "q_values.shape ", q_values.shape
@@ -394,19 +394,19 @@ class DQNAgent:
                     self.replay_memory.append(state_proc_memory, action, reward, is_terminal)
 
                     # validation. keep this clause before the breaks!
-                    if not(self.iter_ctr%eval_every_nth):
-                        print "\n\nEvaluating at iter {}".format(self.iter_ctr)
-                        if not(self.iter_ctr%video_every_nth):
-                            # self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=True)
+                    if not(self.train_iter_ctr%eval_every_nth):
+                        print "\n\nEvaluating at iter {}".format(self.train_iter_ctr)
+                        if not(self.train_iter_ctr%video_every_nth):
+                            # self.evaluate(self.train_episode_ctr=20, max_episode_length=max_episode_length, gen_video=True)
                             self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
                         else:
                             self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
                         print "Done Evaluating\n\n"
 
                     # save model
-                    if not(self.iter_ctr%save_model_every_nth):
-                        self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.iter_ctr).zfill(7))))
-                        output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.iter_ctr).zfill(7))), 'wb')
+                    if not(self.train_iter_ctr%save_model_every_nth):
+                        self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.train_iter_ctr).zfill(7))))
+                        output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.train_iter_ctr).zfill(7))), 'wb')
                         
                         # THIS LINE GAVE ERROR BECAUSE MYDICT DOES NOT EXIST
                         # pkl.dump(mydict, output)
@@ -416,12 +416,12 @@ class DQNAgent:
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
-                        num_episodes += 1
+                        self.train_episode_ctr += 1
                         with tf.name_scope('summaries'):
-                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=num_episodes)
-                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.iter_ctr)
-                        str_1 = "iter_ctr {}, num_episodes : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (self.iter_ctr, num_episodes, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
+                            self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
+                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -431,7 +431,7 @@ class DQNAgent:
                         self.replay_memory.end_episode() 
                         break
 
-                    if not(self.iter_ctr % self.train_freq):
+                    if not(self.train_iter_ctr % self.train_freq):
                         self.update_policy()
 
                 state = next_state
@@ -461,7 +461,7 @@ class DQNAgent:
         # https://github.com/openai/gym/blob/master/gym/wrappers/monitoring.py video_callable takes function as arg. so we hack with true lambda
         # https://github.com/openai/gym/issues/494  
         if gen_video:
-            video_dir = os.path.join(self.log_dir, 'gym_monitor', str(self.iter_ctr).zfill(7))
+            video_dir = os.path.join(self.log_dir, 'gym_monitor', str(self.train_iter_ctr).zfill(7))
             os.makedirs(video_dir)
             env_valid = wrappers.Monitor(env_valid, video_dir, video_callable=lambda x:True, mode='evaluation')
 
@@ -487,8 +487,13 @@ class DQNAgent:
 
                 if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                     eval_episode_ctr_valid += 1
-                    print "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
+                    str1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
                             .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
+                    msg = "\n%s\n" % (LINE)
+                    msg += "%s%s\n" % (BOLD, str_1)
+                    msg += "%s\n" % (LINE)
+                    print(str(msg))
+
                     total_reward_all_episodes.append(total_reward_curr_episode)
                     # num_timesteps_in_curr_episode = 0
                     break
@@ -500,8 +505,8 @@ class DQNAgent:
                 (sum(total_reward_all_episodes), float(len(total_reward_all_episodes)))
         all_episode_avg_reward = sum(total_reward_all_episodes)/float(len(total_reward_all_episodes))
         with tf.name_scope('summaries'):
-            self.tf_log_scaler(tag='test_mean_avg_reward', value=all_episode_avg_reward, step=self.iter_ctr)
-            self.tf_log_scaler(tag='test_mean_Q_max', value=Q_avg, step=self.iter_ctr)
+            self.tf_log_scaler(tag='test_mean_avg_reward', value=all_episode_avg_reward, step=self.train_iter_ctr)
+            self.tf_log_scaler(tag='test_mean_Q_max', value=Q_avg, step=self.train_iter_ctr)
         self.dump_test_episode_reward(all_episode_avg_reward)
         self.qavg_list = np.append(self.qavg_list, Q_avg)
         self.reward_list.append(all_episode_avg_reward)
