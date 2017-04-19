@@ -77,14 +77,14 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 					start = time.time()
 				except rospy.ServiceException, e:
 					print ("/mavros/set_mode service call failed: %s"%e)
-				time.sleep(1)
+				time.sleep(1/self.SPEEDUPFACTOR)
 				rospy.loginfo('DISARMing throttle')
 				rospy.wait_for_service('/mavros/cmd/arming')
 				try:
 					self.arm_proxy(False)
 				except rospy.ServiceException, e:
 					print ("/mavros/set_mode service call failed: %s"%e)
-				# time.sleep(1)
+				# time.sleep(1/self.SPEEDUPFACTOR)
 
 				# rospy.loginfo('Gazebo RESET')
 				# self.reset_proxy()
@@ -102,7 +102,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-			time.sleep(0.1)
+			time.sleep(0.1/self.SPEEDUPFACTOR)
 
 			rospy.loginfo('ARMing throttle')
 			# Arm throttle
@@ -112,7 +112,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-			time.sleep(0.1)
+			time.sleep(0.1/self.SPEEDUPFACTOR)
 			
 			rospy.loginfo('TAKEOFF to %d meters', alt)
 			# Takeoff
@@ -122,7 +122,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/cmd/takeoff service call failed: %s"%e)
 
-			time.sleep(alt)
+			time.sleep(alt/self.SPEEDUPFACTOR)
 
 			alt_msg = None
 			while alt_msg is None:
@@ -169,7 +169,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			except rospy.ServiceException, e:
 				print ("/mavros/set_mode service call failed: %s"%e)
 
-		time.sleep(0.1)
+		time.sleep(0.1/self.SPEEDUPFACTOR)
 
 		self.msg = OverrideRCIn()
 		self.msg.channels[0] = 0 # Roll
@@ -183,7 +183,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
 		self.pub.publish(self.msg)
 
-		time.sleep(0.1)
+		time.sleep(0.1/self.SPEEDUPFACTOR)
 
 		# rospy.loginfo('Changing mode to ALT_HOLD')
 		# Set ALT_HOLD mode
@@ -195,12 +195,13 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 
 	def _launch_apm(self):
 		sim_vehicle_sh = str(os.environ["ARDUPILOT_PATH"]) + "/Tools/autotest/sim_vehicle.sh"
-		subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo", "-v","ArduCopter"])
+		subprocess.Popen(["xterm","-e",sim_vehicle_sh,"-j4","-f","Gazebo", "-S1000", "-v","ArduCopter"])
 
 	def _pause(self, msg):
 		programPause = raw_input(str(msg))
 
 	def __init__(self):
+		self.SPEEDUPFACTOR = 10.0
 		# dem MDP rewards tho
 		self.MIN_LASER_DEFINING_CRASH = 2.0
 		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 4.0
@@ -222,7 +223,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		msg += "%sThen, press <Enter> here to launch Gazebo...%s\n\n%s" % (BOLD, ENDC,  LINE)
 		# self._pause(msg)
 		print(str(msg))
-		time.sleep(3)
+		time.sleep(3/self.SPEEDUPFACTOR)
 
 		# Launch the simulation with the given launchfile name
 		gazebo_env.GazeboEnv.__init__(self, "GazeboErleCopterHover-v0.launch")    
@@ -270,7 +271,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		while countdown > 0:
 			print ("Taking off in in %ds"%countdown)
 			countdown-=1
-			time.sleep(1)
+			time.sleep(1/self.SPEEDUPFACTOR)
 
 		self._takeoff(2)
 
@@ -333,7 +334,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# target_pose_msg.pose.position.z = curr_z
 		# target_pose_msg.pose.orientation = self.pose.orientation
 		# self.setpoint_pub.publish(target_pose_msg)
-		# time.sleep(0.2)
+		# time.sleep(0.2/self.SPEEDUPFACTOR)
 	
 		######### RC ############## 
 
@@ -365,12 +366,12 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# action_msg.channels[7] = 0
 
 		# self.pub.publish(action_msg)
-		# time.sleep(0.5)
+		# time.sleep(0.5/self.SPEEDUPFACTOR)
 
 		# action_msg.channels[3] = 0
 		# action_msg.channels[1] = 1500
 		# self.pub.publish(action_msg)
-		# time.sleep(0.1)
+		# time.sleep(0.1/self.SPEEDUPFACTOR)
 
 
 		######### VELOCITY ############## 
@@ -400,7 +401,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# print "current yaw", current_yaw
 		# print "taking action_norm", action_norm, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(0.1)
+		time.sleep(0.1/self.SPEEDUPFACTOR)
 	
 		observation = self._get_frame()
 		
@@ -453,8 +454,8 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
 				frame = np.asarray(cv_image)
-				cv2.imshow('frame', frame)
-				cv2.waitKey(1)
+				# cv2.imshow('frame', frame)
+				# cv2.waitKey(1)
 				return frame
 			except:
 				raise ValueError('could not get frame')
@@ -499,7 +500,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		vel_cmd.twist.linear.y = 0
 		vel_cmd.twist.linear.z = 0
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(0.1)
+		time.sleep(0.1/self.SPEEDUPFACTOR)
 
 		# change to alt hold first to stop listening to stray velociy / setpt messages
 		rospy.loginfo('Changing mode to ALT_HOLD')
@@ -510,7 +511,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
 
-		time.sleep(0.1)
+		time.sleep(0.1/self.SPEEDUPFACTOR)
 
 		# Resets the state of the environment and returns an initial observation.
 		rospy.loginfo('Changing mode to RTL')
@@ -522,7 +523,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			print ("/mavros/set_mode service call failed: %s"%e)
 
 		rospy.loginfo('Waiting to land')
-		time.sleep(1)
+		time.sleep(1/self.SPEEDUPFACTOR)
 		alt_msg = None
 		erlecopter_alt = float('inf')
 		while erlecopter_alt > 0.1:
@@ -531,7 +532,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 				erlecopter_alt = alt_msg.data
 			except:
 				pass
-		time.sleep(0.2)
+		time.sleep(0.2/self.SPEEDUPFACTOR)
 
 		crash_msg = OverrideRCIn()
 		crash_msg.channels[0] = 0
@@ -544,7 +545,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		crash_msg.channels[7] = 0
 		rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
 		self.pub.publish(crash_msg)
-		time.sleep(0.2)
+		time.sleep(0.2/self.SPEEDUPFACTOR)
 		rospy.loginfo('Changing mode to STABILIZE')
 		# Set STABILIZE mode
 		rospy.wait_for_service('/mavros/set_mode')
@@ -552,7 +553,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			self.mode_proxy(0,'STABILIZE')
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
-		time.sleep(0.2)
+		time.sleep(0.2/self.SPEEDUPFACTOR)
 
 		rospy.loginfo('DISARMing throttle')
 		rospy.wait_for_service('/mavros/cmd/arming')
@@ -560,7 +561,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 			self.arm_proxy(False)
 		except rospy.ServiceException, e:
 			print ("/mavros/set_mode service call failed: %s"%e)
-		time.sleep(0.2)
+		time.sleep(0.2/self.SPEEDUPFACTOR)
 
 		rospy.loginfo('Gazebo RESET')
 		self.reset_proxy()
@@ -568,7 +569,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		self._takeoff(2)
 
 		################# (DE)STABILIZE ##################
-		# time.sleep(1)
+		# time.sleep(1/self.SPEEDUPFACTOR)
 		# # self.msg.channels[0] = 0
 		# # self.msg.channels[1] = 0
 		# self.msg.channels[2] = 0
@@ -580,7 +581,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# rospy.loginfo('Sending RC THROTTLE %d', self.msg.channels[2])
 		# self.pub.publish(self.msg)
 
-		# time.sleep(2)
+		# time.sleep(2/self.SPEEDUPFACTOR)
 
 		# rospy.loginfo('Changing mode to STABILIZE')
 		# # Set STABILIZE mode
@@ -590,7 +591,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# except rospy.ServiceException, e:
 		# 	print ("/mavros/set_mode service call failed: %s"%e)
 
-		# time.sleep(2)
+		# time.sleep(2/self.SPEEDUPFACTOR)
 
 		# rospy.loginfo('Gazebo RESET')
 		# self.reset_proxy()
@@ -616,7 +617,7 @@ class GazeboErleCopterNavigateEnv(gazebo_env.GazeboEnv):
 		# setpoint_msg.pose.orientation.w = target_quat[3]
 		# self.setpoint_pub.publish(setpoint_msg)
 		# print "sent new yaw. wait for 2 seconds"
-		# time.sleep(2)
+		# time.sleep(2/self.SPEEDUPFACTOR)
 
 		return self._get_frame()
 
