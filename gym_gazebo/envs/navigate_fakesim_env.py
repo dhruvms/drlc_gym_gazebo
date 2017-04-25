@@ -20,14 +20,19 @@ from std_srvs.srv import Empty
 from sensor_msgs.msg import LaserScan, NavSatFix, Image
 from std_msgs.msg import Float64
 from gazebo_msgs.msg import ModelStates, ContactState
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Point
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 import tf
 import smtplib
 from email.mime.text import MIMEText
 
 class GazeboErleCopterNavigateEnvFakeSim(): 
 	def __init__(self):
+		self.reset_x = 0.0
+		self.reset_y = 0.0
+		self.reset_z = 2.0
+		self.reset_position = Point(self.reset_x, self.reset_y, self.reset_z)
 		self.SPEEDUPFACTOR = 10.0
 		# dem MDP rewards tho
 		self.MIN_LASER_DEFINING_CRASH = 2.0
@@ -45,18 +50,28 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		subprocess.Popen(["roslaunch","dji_gazebo", "dji_rl.launch"])
 
 		print "Initializing environment. Wait 5 seconds"
-		time.sleep(5)
+		rospy.sleep(5)
 		print "############### DONE ###############"
 		self.num_actions = 9
 		self.action_space = spaces.Discrete(self.num_actions) # F, L, R, B
 		self.reward_range = (-np.inf, np.inf)
 		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
 		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=10, latch=False)
+		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
+
+	def pose_callback(self, msg):
+		self.position =  msg.pose.pose.position
+		self.quat = msg.pose.pose.orientation
+		# rospy.loginfo("Point Position: [ %f, %f, %f ]"%(position.x, position.y, position.z))
+		# rospy.loginfo("Quat Orientation: [ %f, %f, %f, %f]"%(quat.x, quat.y, quat.z, quat.w))
+		self.euler = tf.transformations.euler_from_quaternion([self.quat.x, self.quat.y, self.quat.z, self.quat.w])
+		# rospy.loginfo("Euler Angles: %s"%str(euler))
+		self.pose = msg.pose
 
 	def step(self, action):
-		print "step was called"
+		# print "step was called"
 		vel_cmd = Twist()
-		speed = 1
+		speed = 10
 
 		delta_theta_deg = 10
 		# 4 is forward, 0-3 are to left, 5-8 are right. all separated by 10 deg each.
@@ -108,13 +123,13 @@ class GazeboErleCopterNavigateEnvFakeSim():
 						(min_laser_scan - self.MIN_LASER_DEFINING_NEGATIVE_REWARD))
 		else:
 			reward = self.REWARD_AT_CRASH
-		if action_norm < 0:
-			# print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(min_laser_scan,2), round(dist_to_goal,2), \
-						# round(reward_dist_to_goal,2), action_norm, reward)
-			print "min_laser : {} action : {} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
+		# if action_norm < 0:
+		# 	# print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(min_laser_scan,2), round(dist_to_goal,2), \
+		# 				# round(reward_dist_to_goal,2), action_norm, reward)
+		# 	print "min_laser : {} action : {} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
 
-		else:
-			print "min_laser : {} action : +{} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
+		# else:
+		# 	print "min_laser : {} action : +{} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
 
 		return observation, reward, is_terminal, {}	
 
@@ -125,6 +140,7 @@ class GazeboErleCopterNavigateEnvFakeSim():
 				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
 				frame = np.asarray(cv_image)
+				# print frame.shape # (480, 640, 3)
 				# cv2.imshow('frame', frame)
 				# cv2.waitKey(1)
 				return frame
@@ -134,9 +150,11 @@ class GazeboErleCopterNavigateEnvFakeSim():
 	def reset(self):
 		vel_cmd = Twist() # zero msg
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(1)
+		# time.sleep(1)
 		rospy.loginfo('Gazebo RESET')
-		self.reset_proxy()
+		while (not self.reset_position.x == self.position.x) and (not self.reset_position.y == self.position.y) and (not self.reset_position.z == self.position.z):
+			self.reset_proxy()
+			# rospy.sleep(1)
 		return self._get_frame()
 
 	def discretize_observation(self,data,new_ranges):

@@ -20,10 +20,10 @@ import matplotlib.pyplot as plt
 import cPickle as pkl
 import os
 from gym import wrappers
-
-#config = tf.ConfigProto()
-#config.gpu_options.per_process_gpu_memory_fraction = 0.5
-#K.set_session(tf.Session(config=config))
+import timeit
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.5
+K.set_session(tf.Session(config=config))
 
 class DQNAgent:
     """Class implementing DQN.
@@ -94,6 +94,7 @@ class DQNAgent:
         self.mode = mode
         self.log_parent_dir = log_parent_dir
         self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
+        self.start_time = timeit.default_timer()
 
     def create_model(self):  # noqa: D103
         """Create the Q-network model.
@@ -205,7 +206,7 @@ class DQNAgent:
 
     def dump_train_episode_reward(self, episode_reward):
         with open(self.log_files['train_episode_reward'], "a") as f:
-            print(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
+            # print(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
             f.write(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
 
     def dump_test_episode_reward(self, episode_reward):
@@ -365,12 +366,14 @@ class DQNAgent:
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
+                        time_till_now = timeit.default_timer() - self.start_time
+
                         self.train_episode_ctr += 1
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -421,8 +424,8 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
