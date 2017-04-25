@@ -152,6 +152,7 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		self.vel_pub.publish(vel_cmd)
 		# time.sleep(1)
 		rospy.loginfo('Gazebo RESET')
+		subprocess.Popen(["python","/home/vaibhav/madratman/drlc_gym_gazebo/forest_generator/make_forest.py"])
 		while (not self.reset_position.x == self.position.x) and (not self.reset_position.y == self.position.y) and (not self.reset_position.z == self.position.z):
 			self.reset_proxy()
 			# rospy.sleep(1)

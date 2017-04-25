@@ -1,13 +1,17 @@
 import numpy as np
+import os
+
+this_script_dir = os.path.dirname(os.path.realpath(__file__))
+print this_script_dir
 
 # setup file to be written
 filename='/home/vaibhav/madratman/projects/inspection_sim_ws/src/inspection_sim/dji_gazebo/worlds/final_forest_final.world'
 target=open(filename,'w')
 
 # read beginning of file
-string = open('begin3_madratman', 'r').read()
-cil_1 = open('cil_13_madratman', 'r').read()
-cil_2 = open('cil_23_madratman', 'r').read()
+string = open(os.path.join(this_script_dir, 'begin3_madratman'), 'r').read()
+cil_1 = open(os.path.join(this_script_dir, 'cil_13_madratman'), 'r').read()
+cil_2 = open(os.path.join(this_script_dir, 'cil_23_madratman'), 'r').read()
 
 # write beginning of file
 target.write(string)
@@ -15,10 +19,10 @@ target.write(string)
 # generate random samples
 
 nx=10
-ny=5
-spacing=5
-random_interval_x=5
-random_interval_y=2.5
+ny=6
+spacing=8
+random_interval_x=spacing
+random_interval_y=spacing
 offset_x=5
 offset_y=-int(ny*spacing/2)
 
@@ -29,7 +33,7 @@ positions_x=np.zeros([nx,ny])
 positions_y=np.zeros([nx,ny])
 
 counter=0
-
+np.random.seed() #use seed from sys time to build new env on reset
 for i in range(nx):
 	for j in range(ny):
 		name="\n    <model name='unit_cylinder_"+str(counter)+"'>"
