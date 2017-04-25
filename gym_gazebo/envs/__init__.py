@@ -11,6 +11,7 @@ from gym_gazebo.envs.gazebo_round_turtlebot_lidar import GazeboRoundTurtlebotLid
 # Erle-Copter
 from gym_gazebo.envs.gazebo_erlecopter_hover import GazeboErleCopterHoverEnv
 from gym_gazebo.envs.navigate_erlecopter_env import GazeboErleCopterNavigateEnv
+from gym_gazebo.envs.navigate_fakesim_env import GazeboErleCopterNavigateEnvFakeSim
 
 #Erle-Rover
 from gym_gazebo.envs.gazebo_maze_erlerover_lidar import GazeboMazeErleRoverLidarEnv

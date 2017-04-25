@@ -19,7 +19,8 @@ import gym_gazebo
 
 def main():  # noqa: D103
     parser = argparse.ArgumentParser(description='Run DQN on Atari SpaceInvaders')
-    parser.add_argument('--env', default='GazeboErleCopterNavigate-v0', help='Atari env name')
+    # parser.add_argument('--env', default='GazeboErleCopterNavigate-v0', help='Atari env name')
+    parser.add_argument('--env', default='GazeboErleCopterNavigateFakeSim-v0', help='Atari env name')
     parser.add_argument('--mode', default='vanilla', type=str, help='vanilla or double dqn')
     parser.add_argument('--question', default='deep', type=str, help='q2, q3, q4, deep, q7, eval_table')
     parser.add_argument('--resume_dir', default=None, type=str, help='resume dir')
@@ -64,7 +65,7 @@ def main():  # noqa: D103
     else:
         agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=5000, num_burn_in=5000, train_freq=4, batch_size=32, mode=args.mode)
 
-    agent.fit(num_iterations = int(5e6), max_episode_length=1500, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
+    agent.fit(num_iterations = int(5e6), max_episode_length=500, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
 
 if __name__ == '__main__':
     main()

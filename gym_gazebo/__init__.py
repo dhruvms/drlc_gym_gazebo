@@ -49,6 +49,10 @@ register(
     entry_point='gym_gazebo.envs:GazeboErleCopterNavigateEnv',
 )
 
+register(
+    id='GazeboErleCopterNavigateFakeSim-v0',
+    entry_point='gym_gazebo.envs:GazeboErleCopterNavigateEnvFakeSim',
+)
 #Erle-Rover envs
 register(
     id='GazeboMazeErleRoverLidar-v0',
