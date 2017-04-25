@@ -1,0 +1,5 @@
+
+    <include>
+      <uri>model://Target</uri>
+      <pose>0 0 0.05 0 0 0</pose>
+    </include>
