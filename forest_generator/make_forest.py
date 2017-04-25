@@ -17,17 +17,18 @@ cil_2 = open(os.path.join(this_script_dir, 'cil_23_madratman'), 'r').read()
 target.write(string)
 
 # generate random samples
+nx = 15
+spacing_x = 10
+random_interval_x = spacing_x/3
+offset_x = 5
 
-nx=10
-ny=6
-spacing=8
-random_interval_x=spacing
-random_interval_y=spacing
-offset_x=5
-offset_y=-int(ny*spacing/2)
+ny = 8
+spacing_y = 6
+random_interval_y = spacing_y
+offset_y = -int(ny*spacing_y/2)+3
 
-x = np.linspace(offset_x, offset_x+(nx-1)*spacing, nx)
-y = np.linspace(offset_y, offset_y+(ny-1)*spacing, ny)
+x = np.linspace(offset_x, offset_x+(nx-1)*spacing_x, nx)
+y = np.linspace(offset_y, offset_y+(ny-1)*spacing_y, ny)
 
 positions_x=np.zeros([nx,ny])
 positions_y=np.zeros([nx,ny])

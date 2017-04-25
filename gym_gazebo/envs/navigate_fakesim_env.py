@@ -33,15 +33,15 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		self.reset_y = 0.0
 		self.reset_z = 2.0
 		self.reset_position = Point(self.reset_x, self.reset_y, self.reset_z)
-		self.SPEEDUPFACTOR = 10.0
+
 		# dem MDP rewards tho
-		self.MIN_LASER_DEFINING_CRASH = 2.0
-		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 4.0
+		self.MIN_LASER_DEFINING_CRASH = 1.5
+		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 3.5
 		self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD = 0.0
 		self.REWARD_AT_LASER_JUST_BEFORE_CRASH = -5.0
 		self.REWARD_AT_CRASH = -10
 		self.REWARD_FOR_FLYING_SAFE = 1.0 # at each time step
-		self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE = 1.0
+		self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE = 1.5
 
 		subprocess.Popen("roscore")
 		print ("Roscore launched!")
@@ -71,7 +71,7 @@ class GazeboErleCopterNavigateEnvFakeSim():
 	def step(self, action):
 		# print "step was called"
 		vel_cmd = Twist()
-		speed = 10
+		speed = 20
 
 		delta_theta_deg = 10
 		# 4 is forward, 0-3 are to left, 5-8 are right. all separated by 10 deg each.
@@ -83,6 +83,8 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		vel_cmd.linear.x = vel_x_body
 		vel_cmd.linear.y = vel_y_body
 		vel_cmd.linear.z = 0
+		# vel_cmd.linear.x = speed
+		# vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
 		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
 		# print "current yaw", current_yaw
 		# print "taking action_norm", action_norm, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
@@ -152,7 +154,7 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		self.vel_pub.publish(vel_cmd)
 		# time.sleep(1)
 		rospy.loginfo('Gazebo RESET')
-		subprocess.Popen(["python","/home/vaibhav/madratman/drlc_gym_gazebo/forest_generator/make_forest.py"])
+		# subprocess.Popen(["python","/home/vaibhav/madratman/drlc_gym_gazebo/forest_generator/make_forest.py"])
 		while (not self.reset_position.x == self.position.x) and (not self.reset_position.y == self.position.y) and (not self.reset_position.z == self.position.z):
 			self.reset_proxy()
 			# rospy.sleep(1)

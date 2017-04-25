@@ -312,7 +312,7 @@ class DQNAgent:
           resets. Can help exploration.
         """
         self.compile()
-        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=100000, num_actions=self.num_actions) # for training
+        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=1000000, num_actions=self.num_actions) # for training
         self.replay_memory = ReplayMemory(max_size=1000000)
         self.log_loss_every_nth = log_loss_every_nth
         random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
@@ -372,6 +372,8 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
+                            self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
+                            self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
                         str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
                                 (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
@@ -396,6 +398,7 @@ class DQNAgent:
                     total_reward_curr_episode += reward
                     state_proc_memory = self.preprocessor.process_state_for_memory(state)
                     self.replay_memory.append(state_proc_memory, action, reward, is_terminal)
+                    time_till_now = timeit.default_timer() - self.start_time
 
                     # validation. keep this clause before the breaks!
                     if not(self.train_iter_ctr%eval_every_nth):
@@ -424,6 +427,8 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
+                            self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
+                            self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
                         str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
                                 (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
