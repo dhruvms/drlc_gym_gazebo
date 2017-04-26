@@ -47,7 +47,7 @@ def main():  # noqa: D103
         from deeprl_hw2.dqn import DQNAgent
 
     video_every_nth = 500
-    eval_every_nth = 25000
+    eval_every_nth = 500
 
     if args.env == "breakout":
         args.env = 'Breakout-v0'

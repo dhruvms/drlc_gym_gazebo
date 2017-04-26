@@ -473,6 +473,10 @@ class DQNAgent:
             video_dir = os.path.join(self.log_dir, 'gym_monitor', str(self.train_iter_ctr).zfill(7))
             os.makedirs(video_dir)
             env_valid = wrappers.Monitor(env_valid, video_dir, video_callable=lambda x:True, mode='evaluation')
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        ENDC = '\033[0m'        
+        LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
 
         while eval_episode_ctr_valid < num_episodes:
             state = self.env.reset()
@@ -496,7 +500,7 @@ class DQNAgent:
 
                 if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                     eval_episode_ctr_valid += 1
-                    str1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
+                    str_1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
                             .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
                     msg = "\n%s\n" % (LINE)
                     msg += "%s%s\n" % (BOLD, str_1)
