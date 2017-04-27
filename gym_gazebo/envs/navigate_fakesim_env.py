@@ -27,7 +27,7 @@ import tf
 import smtplib
 from email.mime.text import MIMEText
 
-class GazeboErleCopterNavigateEnvFakeSim(): 
+class GazeboErleCopterNavigateEnvFakeSim(gym.Env): 
 	def __init__(self):
 		self.reset_x = 0.0
 		self.reset_y = 0.0
@@ -59,17 +59,50 @@ class GazeboErleCopterNavigateEnvFakeSim():
 		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
 		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=10, latch=False)
 		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
+		self.pose_subscriber = rospy.Subscriber('/scan', LaserScan, self.laser_callback)
+		self.previous_min_laser_scan = 0.0
+		self.done = False
+		# the following are absolutes
+		self.MAX_POSITION_X = 150.0
+		self.MAX_POSITION_Y = 30.0
 
 	def pose_callback(self, msg):
 		self.position =  msg.pose.pose.position
 		self.quat = msg.pose.pose.orientation
-		# rospy.loginfo("Point Position: [ %f, %f, %f ]"%(position.x, position.y, position.z))
+		# rospy.loginfo("Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
 		# rospy.loginfo("Quat Orientation: [ %f, %f, %f, %f]"%(quat.x, quat.y, quat.z, quat.w))
 		self.euler = tf.transformations.euler_from_quaternion([self.quat.x, self.quat.y, self.quat.z, self.quat.w])
 		# rospy.loginfo("Euler Angles: %s"%str(euler))
 		self.pose = msg.pose
 
-	def step(self, action):
+		# end episode if out of forest's box
+		if (abs(self.position.x) > self.MAX_POSITION_X) or (abs(self.position.y) > self.MAX_POSITION_Y):
+			self.done = True
+			print "went out of range. ending episode"
+			rospy.loginfo("Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
+
+	def laser_callback(self, msg):
+		data = msg
+		self.min_laser_scan = np.min(data.ranges)
+		new_ranges = len(data.ranges)
+		discretized_ranges = []
+		done = False
+		mod = len(data.ranges)/new_ranges
+		for i, item in enumerate(data.ranges):
+			if (i%mod==0):
+				if data.ranges[i] == float ('Inf'):
+					discretized_ranges.append(6)
+				elif np.isnan(data.ranges[i]):
+					discretized_ranges.append(0)
+				else:
+					discretized_ranges.append(int(data.ranges[i]))
+			if (self.MIN_LASER_DEFINING_CRASH > data.ranges[i] > 0):
+				done = True
+		# print "min_laser : {}".format(round(self.min_laser_scan,2))
+
+		self.done = done
+
+	def _step(self, action):
 		# print "step was called"
 		vel_cmd = Twist()
 		speed = 20
@@ -93,25 +126,24 @@ class GazeboErleCopterNavigateEnvFakeSim():
 	
 		observation = self._get_frame()
 		
-		data = None
-		while data is None:
-			try:
-				data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
-			except:
-				pass
+		# data = None
+		# while data is None:
+		# 	data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
 
-		# is_terminal = self.check_terminal(data)
-		min_laser_scan = np.min(data.ranges)
+		# min_laser_scan = np.min(data.ranges)
+		# if min_laser_scan == self.previous_min_laser_scan:
+			# print "fuck"
+
 		# print "max laser", np.max(data.ranges)
-		state, is_terminal = self.discretize_observation(data,len(data.ranges))
+		# state, is_terminal = self.discretize_observation(data,len(data.ranges))
 
 		# dist_to_goal = math.sqrt((self.position_y - 220.0)**2 + (self.position_x - 0.0)**2)
 		# reward_dist_to_goal = 1 / dist_to_goal
 
 		# if still alive
-		if not is_terminal:
+		if not self.done:
 			# if obstacles are faraway
-			if min_laser_scan > self.MIN_LASER_DEFINING_NEGATIVE_REWARD:
+			if self.min_laser_scan > self.MIN_LASER_DEFINING_NEGATIVE_REWARD:
 				# if flying forward
 				if action_norm == 0:
 					reward = self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE
@@ -123,18 +155,17 @@ class GazeboErleCopterNavigateEnvFakeSim():
 				reward = self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD + \
 						((self.REWARD_AT_LASER_JUST_BEFORE_CRASH - self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD)/ \
 						(self.MIN_LASER_DEFINING_CRASH - self.MIN_LASER_DEFINING_NEGATIVE_REWARD)* \
-						(min_laser_scan - self.MIN_LASER_DEFINING_NEGATIVE_REWARD))
+						(self.min_laser_scan - self.MIN_LASER_DEFINING_NEGATIVE_REWARD))
 		else:
 			reward = self.REWARD_AT_CRASH
 		# if action_norm < 0:
-		# 	# print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(min_laser_scan,2), round(dist_to_goal,2), \
-		# 				# round(reward_dist_to_goal,2), action_norm, reward)
-		# 	print "min_laser : {} action : {} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
-
+			# print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(min_laser_scan,2), round(dist_to_goal,2), \
+						# round(reward_dist_to_goal,2), action_norm, reward)
+			# print "min_laser : {} action : {} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
 		# else:
-		# 	print "min_laser : {} action : +{} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
+			# print "min_laser : {} action : +{} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
 
-		return observation, reward, is_terminal, {}	
+		return observation, reward, self.done, {}	
 
 	def _get_frame(self):
 		frame = None;
@@ -150,14 +181,25 @@ class GazeboErleCopterNavigateEnvFakeSim():
 			except:
 				raise ValueError('could not get frame')
 
-	def reset(self):
+	def _reset(self):
 		vel_cmd = Twist() # zero msg
 		self.vel_pub.publish(vel_cmd)
 		# time.sleep(1)
 		rospy.loginfo('Gazebo RESET')
+		fuck_ctr = 0
 		# subprocess.Popen(["python","/home/vaibhav/madratman/drlc_gym_gazebo/forest_generator/make_forest.py"])
-		while (not self.reset_position.x == self.position.x) and (not self.reset_position.y == self.position.y) and (not self.reset_position.z == self.position.z):
+		
+		# EPSILON = 1e-100
+		# while (not abs(self.reset_position.x-self.position.x) < EPSILON) and \
+			  # (not abs(self.reset_position.y-self.position.y) < EPSILON) and \
+			  # (not abs(self.reset_position.z-self.position.z) < EPSILON):
+		while (not self.reset_position.x == self.position.x) and \
+			  (not self.reset_position.y == self.position.y) and \
+			  (not self.reset_position.z == self.position.z):
+		
 			self.reset_proxy()
+			# print "fuck", fuck_ctr, self.position.x, self.position.y, self.position.z
+			fuck_ctr += 1
 			# rospy.sleep(1)
 		return self._get_frame()
 
@@ -176,4 +218,4 @@ class GazeboErleCopterNavigateEnvFakeSim():
 					discretized_ranges.append(int(data.ranges[i]))
 			if (self.MIN_LASER_DEFINING_CRASH > data.ranges[i] > 0):
 				done = True
-		return discretized_ranges,done
+		return discretized_ranges, done
