@@ -19,13 +19,15 @@ from mavros_msgs.srv import CommandBool, CommandTOL, SetMode, ParamSet, ParamGet
 from std_srvs.srv import Empty
 from sensor_msgs.msg import LaserScan, NavSatFix, Image
 from std_msgs.msg import Float64
-from gazebo_msgs.msg import ModelStates, ContactState
+from gazebo_msgs.msg import ModelState, ContactState, GetModelState, SetModelState
 from geometry_msgs.msg import Twist, Point
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Pose
 from nav_msgs.msg import Odometry
 import tf
 import smtplib
 from email.mime.text import MIMEText
+
+import message_filters
 
 class GazeboErleCopterNavigateEnvFakeSim(gym.Env): 
 	def __init__(self):
@@ -54,26 +56,37 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		rospy.sleep(5)
 		print "############### DONE ###############"
 		self.num_actions = 9
-		self.action_space = spaces.Discrete(self.num_actions) # F, L, R, B
+		self.action_space = spaces.Discrete(self.num_actions)
 		self.reward_range = (-np.inf, np.inf)
 		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
 		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=10, latch=False)
 		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
-		# self.laser_subscriber = rospy.Subscriber('/scan', LaserScan, self.laser_callback)
 		self.previous_min_laser_scan = 0.0
 		self.done = False
 		# the following are absolutes
 		self.MAX_POSITION_X = 90.0
 		self.MAX_POSITION_Y = 30.0
 
+		self.laser_subscriber = message_filters.Subscriber('/scan', LaserScan)
+		self.image_subscriber = message_filters.Subscriber('/camera/rgb/image_raw', Image)
+		self.synchro = message_filters.ApproximateTimeSynchronizer(self.laser_subscriber, self.image_subscriber)
+		self.synchro.registerCallback(self.synchro_callback)
+
+		self.observation = None
+		self.laser = None
+		self.HAVE_DATA = False
+
+		self.get_model_state_proxy = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
+		self.set_model_state_proxy = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+
 	def pose_callback(self, msg):
 		self.position =  msg.pose.pose.position
-		self.quat = msg.pose.pose.orientation
+		# self.quat = msg.pose.pose.orientation
 		# rospy.loginfo("Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
 		# rospy.loginfo("Quat Orientation: [ %f, %f, %f, %f]"%(quat.x, quat.y, quat.z, quat.w))
-		self.euler = tf.transformations.euler_from_quaternion([self.quat.x, self.quat.y, self.quat.z, self.quat.w])
+		# self.euler = tf.transformations.euler_from_quaternion([self.quat.x, self.quat.y, self.quat.z, self.quat.w])
 		# rospy.loginfo("Euler Angles: %s"%str(euler))
-		self.pose = msg.pose
+		# self.pose = msg.pose
 
 		# end episode if out of forest's box
 		if (abs(self.position.x) > self.MAX_POSITION_X) or (abs(self.position.y) > self.MAX_POSITION_Y):
@@ -104,14 +117,62 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.previous_min_laser_scan = self.min_laser_scan
 		# print "min_laser : {} previous {} ".format(round(self.min_laser_scan,2), round(self.previous_min_laser_scan,2))
 
-	def _step(self, action):
-		# hack 
-		data = None
-		while data is None:
+	def _get_frame(self):
+		frame = None;
+		data = None;
+		start = time.time()
+
+		while (frame is None) or (data is None):
+			diff = time.time() - start
+			# print "diff", diff
+			if diff > 0.5: # ghost mode send zero vel to stop
+				print "ghost mode : diff", diff
+				vel_cmd = Twist() # zero msg
+				self.vel_pub.publish(vel_cmd)
+
+			frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
 			data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
+			cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
+			frame = np.asarray(cv_image)
+			# print frame.shape # (480, 640, 3)
+			# cv2.imshow('frame', frame)
+			# cv2.waitKey(1)
+
 			self.min_laser_scan = np.min(data.ranges)
 			if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
 				self.done = True
+			self.previous_min_laser_scan = self.min_laser_scan
+		
+	 	return frame
+			# except:
+				# raise ValueError('could not get frame')
+
+	def synchro_callback(self, laser, image):
+    	assert laser.header.stamp == image.header.stamp
+
+    	cv_image = CvBridge().imgmsg_to_cv2(image, desired_encoding="passthrough")
+		self.observation = np.asarray(cv_image)
+		self.laser = laser
+
+		self.HAVE_DATA = True
+
+		self.min_laser_scan = np.min(self.laser.ranges)
+		if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
+			self.done = True
+
+	def _step(self, action):
+		# # hack 
+		# data = None
+		# while data is None:
+		# 	data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
+		# 	self.min_laser_scan = np.min(data.ranges)
+		# 	if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
+		# 		self.done = True
+		if self.done:
+			return self.observation, reward, self.done, {}	
+
+		while not self.HAVE_DATA:
+			continue
 
 		# print "step was called"
 		vel_cmd = Twist()
@@ -134,12 +195,16 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# print "current yaw", current_yaw
 		# print "taking action_norm", action_norm, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
+
+		self.HAVE_DATA = False
+		while not self.HAVE_DATA:
+			continue
 		
-		start = time.time()
-		observation = self._get_frame()
-		time_taken = time.time() - start
-		if time_taken > 0.5:
-			print "ghost in step()"
+		# start = time.time()
+		# observation = self._get_frame()
+		# time_taken = time.time() - start
+		# if time_taken > 0.5:
+		# 	print "ghost in step()"
 		# data = None
 		# while data is None:
 		# 	data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
@@ -151,7 +216,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# print "max laser", np.max(data.ranges)
 		# state, is_terminal = self.discretize_observation(data,len(data.ranges))
 
-		dist_to_goal = math.sqrt((self.position.y - 0.0)**2 + (self.position.x - self.MAX_POSITION_X)**2)
+		dist_to_goal = math.sqrt((self.position.y - 0.0)**2 + (self.position.x - self.MAX_POSITION_X/)**2)
 		# reward_dist_to_goal = 1 / dist_to_goal
 		reward_dist_to_goal = (self.MAX_POSITION_X-dist_to_goal) / float(self.MAX_POSITION_X)
 
@@ -184,40 +249,13 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 						round(reward_dist_to_goal,2), action_norm, round(reward,2))
 			# print "min_laser : {} action : +{} reward : {}".format(round(self.min_laser_scan,2), action_norm, reward)
 
-		return observation, reward, self.done, {}	
-
-	def _get_frame(self):
-		frame = None;
-		data = None;
-		start = time.time()
-
-		while (frame is None) or (data is None):
-			diff = time.time() - start
-			# print "diff", diff
-			if diff > 0.5: # ghost mode send zero vel to stop
-				print "ghost mode : diff", diff
-				vel_cmd = Twist() # zero msg
-				self.vel_pub.publish(vel_cmd)
-
-			frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
-			data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
-			cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
-			frame = np.asarray(cv_image)
-			# print frame.shape # (480, 640, 3)
-			# cv2.imshow('frame', frame)
-			# cv2.waitKey(1)
-
-			self.min_laser_scan = np.min(data.ranges)
-			if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
-				self.done = True
-			self.previous_min_laser_scan = self.min_laser_scan
-		
-	 	return frame
-			# except:
-				# raise ValueError('could not get frame')
+		return self.observation, reward, self.done, {}	
 
 	def _reset(self):
 		self.done = False
+		self.HAVE_DATA = False
+		while not self.HAVE_DATA:
+			continue
 		vel_cmd = Twist() # zero msg
 		self.vel_pub.publish(vel_cmd)
 		# time.sleep(1)
@@ -233,11 +271,104 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 			  (not self.reset_position.y == self.position.y) and \
 			  (not self.reset_position.z == self.position.z):
 		
-			self.reset_proxy()
-			# print "fuck", fuck_ctr, self.position.x, self.position.y, self.position.z
-			fuck_ctr += 1
-			# rospy.sleep(1)
-		return self._get_frame()
+			# generate random samples
+			nx = 15
+			spacing_x = 6
+			random_interval_x = spacing_x/3
+			offset_x = 5
+
+			ny = 10
+			spacing_y = 6
+			random_interval_y = spacing_y
+			offset_y = -int(ny*spacing_y/2)+3
+
+			x = np.linspace(offset_x, offset_x+(nx-1)*spacing_x, nx)
+			y = np.linspace(offset_y, offset_y+(ny-1)*spacing_y, ny)
+
+			# positions_x=np.zeros([nx,ny])
+			# positions_y=np.zeros([nx,ny])
+
+			counter=0
+			np.random.seed() #use seed from sys time to build new env on reset
+			for i in range(nx):
+				for j in range(ny):
+					name='unit_cylinder_'+str(counter)
+
+
+					counter+=1
+					noise_x=np.random.random()-0.5
+					noise_x*=random_interval_x
+					noise_y=np.random.random()-0.5
+					noise_y*=random_interval_y
+					x_tree=x[i]+noise_x
+					y_tree=y[j]+noise_y
+
+					rospy.wait_for_service('/gazebo/get_model_state')
+					try:
+						model_data = self.get_model_state_proxy(name, '')
+
+						model_data.pose.position.x = x_tree
+						model_data.pose.position.y = y_tree
+						model_data.pose.position.z = 3.0
+						model_data.pose.orientation.x = 0.0
+						model_data.pose.orientation.y = 0.0
+						model_data.pose.orientation.z = 0.0
+						model_data.pose.orientation.w = 0.0
+
+						model_data.twist.linear.x = 0.0
+						model_data.twist.linear.y = 0.0
+						model_data.twist.linear.z = 0.0
+						model_data.twist.angular.x = 0.0
+						model_data.twist.angular.y = 0.0
+						model_data.twist.angular.z = 0.0
+
+						model_state = ModelState()
+						model_state.model_name = name
+						model_state.pose = model_data.pose
+						model_state.twist = model_data.twist
+						model_state.reference_frame = '' # change to 'world'?
+						rospy.wait_for_service('/gazebo/set_model_state')
+						try:
+							self.set_model_state_proxy(model_state)
+						except rospy.ServiceException, e:
+							print "Service call failed: %s"%e
+
+					except rospy.ServiceException, e:
+						print "Service call failed: %s"%e
+
+			try:
+				model_data = self.get_model_state_proxy('dji', '')
+
+				model_data.pose.position.x = self.reset_position.x
+				model_data.pose.position.y = self.reset_position.y
+				model_data.pose.position.z = self.reset_position.z
+				model_data.pose.orientation.x = 0.0
+				model_data.pose.orientation.y = 0.0
+				model_data.pose.orientation.z = 0.0
+				model_data.pose.orientation.w = 0.0
+
+				model_data.twist.linear.x = 0.0
+				model_data.twist.linear.y = 0.0
+				model_data.twist.linear.z = 0.0
+				model_data.twist.angular.x = 0.0
+				model_data.twist.angular.y = 0.0
+				model_data.twist.angular.z = 0.0
+
+				model_state = ModelState()
+				model_state.model_name = 'dji'
+				model_state.pose = model_data.pose
+				model_state.twist = model_data.twist
+				model_state.reference_frame = '' # change to 'world'?
+				rospy.wait_for_service('/gazebo/set_model_state')
+				try:
+					self.set_model_state_proxy(model_state)
+				except rospy.ServiceException, e:
+					print "Service call failed: %s"%e
+
+			except rospy.ServiceException, e:
+				print "Service call failed: %s"%e
+
+		return self.observation
 
 	def discretize_observation(self,data,new_ranges):
 		# print data
