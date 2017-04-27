@@ -42,12 +42,12 @@ def main():  # noqa: D103
     elif args.question=="eval_table":
         from deeprl_hw2.evaluation_table import DQNAgent
     elif args.resume_dir is not None:
-        from deeprl_hw2.dqn_resume import DQNAgent
+        from deeprl_hw2.dqn_eval import DQNAgent
     else:
         from deeprl_hw2.dqn import DQNAgent
 
     video_every_nth = 50000
-    eval_every_nth = 10000
+    eval_every_nth = 25000
 
     if args.env == "breakout":
         args.env = 'Breakout-v0'
@@ -60,12 +60,11 @@ def main():  # noqa: D103
         eval_every_nth = 50000        
 
     if args.resume_dir is not None:
-        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode, 
-                        resume_dir=args.resume_dir)
+        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=25000, train_freq=4, batch_size=32, mode=args.mode, resume_dir=args.resume_dir)
     else:
-        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=500, train_freq=4, batch_size=32, mode=args.mode)
+        raise ValueError()
 
-    agent.fit(num_iterations = int(5e6), max_episode_length=1000, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
+    agent.evaluate(num_episodes=100, max_episode_length=1000, gen_video=False)
 
 if __name__ == '__main__':
     main()

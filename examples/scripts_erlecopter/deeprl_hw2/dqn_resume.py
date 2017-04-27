@@ -475,18 +475,6 @@ class DQNAgent:
                 state = next_state
 
     def evaluate(self, num_episodes, max_episode_length=None, gen_video=False):
-        """Test your agent with a provided environment.
-        
-        You shouldn't update your network parameters here. Also if you
-        have any layers that vary in behavior between train/test time
-        (such as dropout or batch norm), you should set them to test.
-
-        Basically run your policy on the environment and collect stats
-        like cumulative reward, average episode length, etc.
-
-        You can also call the render function here if you want to
-        visually inspect your policy.
-        """
         evaluation_policy = GreedyPolicy()
         eval_preprocessor = preprocessors.PreprocessorSequence()
         # env_valid = gym.make(self.env_string)
@@ -502,6 +490,10 @@ class DQNAgent:
             video_dir = os.path.join(self.log_dir, 'gym_monitor', str(self.train_iter_ctr).zfill(7))
             os.makedirs(video_dir)
             env_valid = wrappers.Monitor(env_valid, video_dir, video_callable=lambda x:True, mode='evaluation')
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        ENDC = '\033[0m'        
+        LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
 
         while eval_episode_ctr_valid < num_episodes:
             state = self.env.reset()
@@ -525,8 +517,13 @@ class DQNAgent:
 
                 if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                     eval_episode_ctr_valid += 1
-                    print "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
+                    str_1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
                             .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
+                    msg = "\n%s\n" % (LINE)
+                    msg += "%s%s\n" % (BOLD, str_1)
+                    msg += "%s\n" % (LINE)
+                    print(str(msg))
+
                     total_reward_all_episodes.append(total_reward_curr_episode)
                     # num_timesteps_in_curr_episode = 0
                     break
@@ -546,5 +543,4 @@ class DQNAgent:
 
         print "all_episode_avg_reward ", all_episode_avg_reward
         print "\n\n\n self.reward_list \n\n\n", self.reward_list
-
 

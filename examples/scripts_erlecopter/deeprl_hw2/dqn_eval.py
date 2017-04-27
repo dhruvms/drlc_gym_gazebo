@@ -20,10 +20,10 @@ import matplotlib.pyplot as plt
 import cPickle as pkl
 import os
 from gym import wrappers
-import timeit
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.5
-K.set_session(tf.Session(config=config))
+
+#config = tf.ConfigProto()
+#config.gpu_options.per_process_gpu_memory_fraction = 0.5
+#K.set_session(tf.Session(config=config))
 
 class DQNAgent:
     """Class implementing DQN.
@@ -71,6 +71,7 @@ class DQNAgent:
                  train_freq,
                  batch_size,
                  mode,
+                 resume_dir,
                  log_parent_dir = '/home/vaibhav/madratman/logs/project/dqn'):
 
         self.env_string = env
@@ -81,7 +82,8 @@ class DQNAgent:
         self.num_burn_in = num_burn_in
         self.train_freq = train_freq
         self.batch_size = batch_size
-        self.train_iter_ctr = 0
+        if resume_dir is None:
+            self.train_iter_ctr = 0
 
         self.eval_episode_ctr = 0
         self.preprocessor = preprocessors.PreprocessorSequence()
@@ -93,8 +95,12 @@ class DQNAgent:
         self.loss_last = None
         self.mode = mode
         self.log_parent_dir = log_parent_dir
-        self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
-        self.start_time = timeit.default_timer()
+        # self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
+        if resume_dir is not None:
+            print "resuming from ", resume_dir
+            self.resume_from_log_dir(resume_dir)
+            self.is_resume=True
+        print "self.is_resume", self.is_resume
 
     def create_model(self):  # noqa: D103
         """Create the Q-network model.
@@ -139,7 +145,7 @@ class DQNAgent:
 
         return model
 
-    def compile(self):
+    def compile(self, is_resum=False):
         """Setup all of the TF graph variables/ops.
 
         This is inspired by the compile method on the
@@ -164,10 +170,27 @@ class DQNAgent:
         adam = Adam(lr=1e-4)
         self.q_network.compile(loss=mean_huber_loss, optimizer=adam) 
         self.target_q_network.compile(loss=mean_huber_loss, optimizer=adam)
-        
+        RED = '\033[91m'
+        BOLD = '\033[1m'
+        ENDC = '\033[0m'        
+        LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
+
+        if self.is_resume:
+            last_weight_file = sorted(os.listdir(os.path.join(self.log_dir, 'weights')))[-1]
+            # second_last_weight_file = sorted(os.listdir(os.path.join(self.log_dir, 'weights')))[-2]
+            str_1 = "Loading q_net from " + os.path.join(self.log_dir, 'weights', last_weight_file)
+            # str_1 = str_1 + '\n' + "Loading target_q_net from" + os.path.join(self.log_dir, 'weights', second_last_weight_file)
+            # str_1 = str_1 + '\n' + "Loading target_q_net from" + os.path.join(self.log_dir, 'weights', last_weight_file)
+            msg = "\n%s\n" % (LINE)
+            msg += "%s%s\n" % (BOLD, str_1)
+            msg += "%s\n" % (LINE)
+            print(str(msg))
+            # self.target_q_network.load_weights(os.path.join(self.log_dir, 'weights',second_last_weight_file))
+            self.q_network.load_weights(os.path.join(self.log_dir, 'weights',last_weight_file))
+            # self.target_q_network.load_weights(os.path.join(self.log_dir, 'weights',last_weight_file))
+
         # set the same weights for both initially
         self.target_q_network.set_weights(self.q_network.get_weights())
-        
         print self.q_network.summary()
 
     def calc_q_values(self, state):
@@ -199,6 +222,20 @@ class DQNAgent:
         for key in self.log_files:
             open(os.path.join(self.log_dir, self.log_files[key]), 'a').close()
 
+    def resume_from_log_dir(self, resume_dir):
+        self.log_dir = resume_dir
+        self.log_files = {
+                            'train_loss': os.path.join(self.log_dir, 'train_loss.txt'),
+                            'train_episode_reward': os.path.join(self.log_dir, 'train_episode_reward.txt'),
+                            'test_episode_reward': os.path.join(self.log_dir, 'test_episode_reward.txt')
+                          }
+        #picks the last replay memory(with most iters acc to file name)
+        # latest_replay_memory_file = sorted(os.listdir(os.path.join(self.log_dir, 'replay_memory')))[-1]
+        # with open(os.path.join(self.log_dir, 'replay_memory', latest_replay_memory_file), 'rb') as f:
+        #     self.replay_memory = pkl.load(f)
+        # self.train_iter_ctr = int(latest_replay_memory_file.split('.')[0].split('_')[-1])
+        # print "self.train_iter_ctr", self.train_iter_ctr 
+
     def dump_train_loss(self, loss):
         self.loss_last = loss
         with open(self.log_files['train_loss'], "a") as f:
@@ -206,7 +243,6 @@ class DQNAgent:
 
     def dump_train_episode_reward(self, episode_reward):
         with open(self.log_files['train_episode_reward'], "a") as f:
-            # print(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
             f.write(str(self.train_iter_ctr) + ' ' + str(self.train_episode_ctr) + ' ' + str(episode_reward) + '\n')
 
     def dump_test_episode_reward(self, episode_reward):
@@ -268,7 +304,7 @@ class DQNAgent:
             else:
                 if self.mode == 'vanilla':
                     y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*np.max(q_next[idx])
-                if self.mode == 'double':				
+                if self.mode == 'double':               
                     y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*q_next[idx, np.argmax(q_current[idx])] 
 
         loss = self.q_network.train_on_batch(current_state_images, np.float32(y_targets_all))
@@ -311,14 +347,14 @@ class DQNAgent:
           How long a single episode should last before the agent
           resets. Can help exploration.
         """
-        self.compile()
-        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=2e5, num_actions=self.num_actions) # for training
-        self.replay_memory = ReplayMemory(max_size=1e6)
+        self.compile(self.is_resume)
+        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=100000, num_actions=self.num_actions) # for training
+        self.policy.epsilon = 1.0 - ((1 - 0.1) / 100000 * self.train_iter_ctr)
         self.log_loss_every_nth = log_loss_every_nth
         random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
         self.train_episode_ctr = 0
 
-        # tf logging
+        # tf logging # todo how to resume
         self.tf_session = K.get_session()
         self.tf_summary_writer = tf.summary.FileWriter(self.log_dir, self.tf_session.graph)
 
@@ -366,16 +402,12 @@ class DQNAgent:
 
                     if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                         # state = self.env.reset()
-                        time_till_now = timeit.default_timer() - self.start_time
-
                         self.train_episode_ctr += 1
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
-                            self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
-                            self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -398,7 +430,6 @@ class DQNAgent:
                     total_reward_curr_episode += reward
                     state_proc_memory = self.preprocessor.process_state_for_memory(state)
                     self.replay_memory.append(state_proc_memory, action, reward, is_terminal)
-                    time_till_now = timeit.default_timer() - self.start_time
 
                     # validation. keep this clause before the breaks!
                     if not(self.train_iter_ctr%eval_every_nth):
@@ -412,10 +443,11 @@ class DQNAgent:
 
                     # save model
                     if not(self.train_iter_ctr%save_model_every_nth):
-                        # self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.train_iter_ctr).zfill(7))))
-                        # output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.train_iter_ctr).zfill(7))), 'wb')
-                        self.q_network.save(os.path.join(self.log_dir, 'q_network.h5'))
-                        output = open(os.path.join(self.log_dir, 'mem.pkl'), 'wb')
+                        self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.train_iter_ctr).zfill(7))))
+                        output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.train_iter_ctr).zfill(7))), 'wb')
+                        
+                        # THIS LINE GAVE ERROR BECAUSE MYDICT DOES NOT EXIST
+                        # pkl.dump(mydict, output)
                         
                         pkl.dump(self.replay_memory, output)
                         output.close()
@@ -426,10 +458,8 @@ class DQNAgent:
                         with tf.name_scope('summaries'):
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_no_of_episodes', value=total_reward_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
-                            self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
-                            self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
-                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                                (self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -445,18 +475,7 @@ class DQNAgent:
                 state = next_state
 
     def evaluate(self, num_episodes, max_episode_length=None, gen_video=False):
-        """Test your agent with a provided environment.
-        
-        You shouldn't update your network parameters here. Also if you
-        have any layers that vary in behavior between train/test time
-        (such as dropout or batch norm), you should set them to test.
-
-        Basically run your policy on the environment and collect stats
-        like cumulative reward, average episode length, etc.
-
-        You can also call the render function here if you want to
-        visually inspect your policy.
-        """
+        self.compile(self.is_resume)
         evaluation_policy = GreedyPolicy()
         eval_preprocessor = preprocessors.PreprocessorSequence()
         # env_valid = gym.make(self.env_string)
@@ -525,5 +544,4 @@ class DQNAgent:
 
         print "all_episode_avg_reward ", all_episode_avg_reward
         print "\n\n\n self.reward_list \n\n\n", self.reward_list
-
 

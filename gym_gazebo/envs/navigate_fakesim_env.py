@@ -36,13 +36,13 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.position = Point(self.reset_x, self.reset_y, self.reset_z) # initialize to same coz reset is called before pose callback
 
 		# dem MDP rewards tho
-		self.MIN_LASER_DEFINING_CRASH = 1.5
-		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 3.5
+		self.MIN_LASER_DEFINING_CRASH = 1.0
+		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 2.0
 		self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD = 0.0
 		self.REWARD_AT_LASER_JUST_BEFORE_CRASH = -5.0
 		self.REWARD_AT_CRASH = -10
-		self.REWARD_FOR_FLYING_SAFE = 1.0 # at each time step
-		self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE = 1.5
+		self.REWARD_FOR_FLYING_SAFE = 0.25 # at each time step
+		self.REWARD_FOR_FLYING_FRONT_WHEN_SAFE = 0.25
 
 		subprocess.Popen("roscore")
 		print ("Roscore launched!")
@@ -59,11 +59,11 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
 		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=10, latch=False)
 		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
-		self.pose_subscriber = rospy.Subscriber('/scan', LaserScan, self.laser_callback)
+		# self.laser_subscriber = rospy.Subscriber('/scan', LaserScan, self.laser_callback)
 		self.previous_min_laser_scan = 0.0
 		self.done = False
 		# the following are absolutes
-		self.MAX_POSITION_X = 150.0
+		self.MAX_POSITION_X = 90.0
 		self.MAX_POSITION_Y = 30.0
 
 	def pose_callback(self, msg):
@@ -98,14 +98,24 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 					discretized_ranges.append(int(data.ranges[i]))
 			if (self.MIN_LASER_DEFINING_CRASH > data.ranges[i] > 0):
 				done = True
-		# print "min_laser : {}".format(round(self.min_laser_scan,2))
-
+		
 		self.done = done
 
+		self.previous_min_laser_scan = self.min_laser_scan
+		# print "min_laser : {} previous {} ".format(round(self.min_laser_scan,2), round(self.previous_min_laser_scan,2))
+
 	def _step(self, action):
+		# hack 
+		data = None
+		while data is None:
+			data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
+			self.min_laser_scan = np.min(data.ranges)
+			if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
+				self.done = True
+
 		# print "step was called"
 		vel_cmd = Twist()
-		speed = 20
+		speed = 2.5
 
 		delta_theta_deg = 10
 		# 4 is forward, 0-3 are to left, 5-8 are right. all separated by 10 deg each.
@@ -114,18 +124,22 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		vel_x_body = speed*math.cos(action_norm*(math.radians(delta_theta_deg)))
 		vel_y_body = speed*math.sin(action_norm*(math.radians(delta_theta_deg)))
 
-		vel_cmd.linear.x = vel_x_body
-		vel_cmd.linear.y = vel_y_body
-		vel_cmd.linear.z = 0
-		# vel_cmd.linear.x = speed
-		# vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
+		# vel_cmd.linear.x = vel_x_body
+		# vel_cmd.linear.y = vel_y_body
+		# vel_cmd.linear.z = 0
+
+		vel_cmd.linear.x = speed
+		vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
 		# quaternion = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
 		# print "current yaw", current_yaw
 		# print "taking action_norm", action_norm, ":: velocity (x,y,z)", vel_cmd.twist.linear.x, vel_cmd.twist.linear.y, vel_cmd.twist.linear.z
 		self.vel_pub.publish(vel_cmd)
-	
-		observation = self._get_frame()
 		
+		start = time.time()
+		observation = self._get_frame()
+		time_taken = time.time() - start
+		if time_taken > 0.5:
+			print "ghost in step()"
 		# data = None
 		# while data is None:
 		# 	data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
@@ -137,8 +151,9 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# print "max laser", np.max(data.ranges)
 		# state, is_terminal = self.discretize_observation(data,len(data.ranges))
 
-		# dist_to_goal = math.sqrt((self.position_y - 220.0)**2 + (self.position_x - 0.0)**2)
+		dist_to_goal = math.sqrt((self.position.y - 0.0)**2 + (self.position.x - self.MAX_POSITION_X)**2)
 		# reward_dist_to_goal = 1 / dist_to_goal
+		reward_dist_to_goal = (self.MAX_POSITION_X-dist_to_goal) / float(self.MAX_POSITION_X)
 
 		# if still alive
 		if not self.done:
@@ -158,30 +173,51 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 						(self.min_laser_scan - self.MIN_LASER_DEFINING_NEGATIVE_REWARD))
 		else:
 			reward = self.REWARD_AT_CRASH
-		# if action_norm < 0:
-			# print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(min_laser_scan,2), round(dist_to_goal,2), \
-						# round(reward_dist_to_goal,2), action_norm, reward)
-			# print "min_laser : {} action : {} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
-		# else:
-			# print "min_laser : {} action : +{} reward : {}".format(round(min_laser_scan,2), action_norm, reward)
+ 		# print self.min_laser_scan, action
+
+		if action_norm < 0:
+			print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : {} reward : {}".format(round(self.min_laser_scan,2), round(dist_to_goal,2), \
+						round(reward_dist_to_goal,2), action_norm, round(reward,2))
+			# print "min_laser : {} action : {} reward : {}".format(round(self.min_laser_scan,2), action_norm, reward)
+		else:
+			print "min_laser : {} dist_to_goal : {} reward_dist_to_goal : {} action : +{} reward : {}".format(round(self.min_laser_scan,2), round(dist_to_goal,2), \
+						round(reward_dist_to_goal,2), action_norm, round(reward,2))
+			# print "min_laser : {} action : +{} reward : {}".format(round(self.min_laser_scan,2), action_norm, reward)
 
 		return observation, reward, self.done, {}	
 
 	def _get_frame(self):
 		frame = None;
-		while frame is None:
-			try:
-				frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
-				cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
-				frame = np.asarray(cv_image)
-				# print frame.shape # (480, 640, 3)
-				# cv2.imshow('frame', frame)
-				# cv2.waitKey(1)
-				return frame
-			except:
-				raise ValueError('could not get frame')
+		data = None;
+		start = time.time()
+
+		while (frame is None) or (data is None):
+			diff = time.time() - start
+			# print "diff", diff
+			if diff > 0.5: # ghost mode send zero vel to stop
+				print "ghost mode : diff", diff
+				vel_cmd = Twist() # zero msg
+				self.vel_pub.publish(vel_cmd)
+
+			frame = rospy.wait_for_message('/camera/rgb/image_raw',Image, timeout = 5)
+			data = rospy.wait_for_message('/scan', LaserScan, timeout = 5)
+			cv_image = CvBridge().imgmsg_to_cv2(frame, desired_encoding="passthrough")
+			frame = np.asarray(cv_image)
+			# print frame.shape # (480, 640, 3)
+			# cv2.imshow('frame', frame)
+			# cv2.waitKey(1)
+
+			self.min_laser_scan = np.min(data.ranges)
+			if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
+				self.done = True
+			self.previous_min_laser_scan = self.min_laser_scan
+		
+	 	return frame
+			# except:
+				# raise ValueError('could not get frame')
 
 	def _reset(self):
+		self.done = False
 		vel_cmd = Twist() # zero msg
 		self.vel_pub.publish(vel_cmd)
 		# time.sleep(1)

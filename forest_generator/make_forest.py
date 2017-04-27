@@ -18,11 +18,11 @@ target.write(string)
 
 # generate random samples
 nx = 15
-spacing_x = 10
+spacing_x = 6
 random_interval_x = spacing_x/3
 offset_x = 5
 
-ny = 8
+ny = 10
 spacing_y = 6
 random_interval_y = spacing_y
 offset_y = -int(ny*spacing_y/2)+3
