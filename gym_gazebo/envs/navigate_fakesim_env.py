@@ -120,7 +120,12 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		vel_cmd.linear.x = speed
 		vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
 		self.vel_pub.publish(vel_cmd)
-		time.sleep(0.1)
+
+		# this time will roughly define no of steps per second
+		# can't make it too high (or else it follows one action for too long
+		# nor too low, or else, it does't have enough time to pick up spped and actually move
+		time.sleep(1e-1)
+		
 		# pubish zero after sleeping for a small time to avoid ghost mode bug
 		vel_cmd_zero = Twist()
 		self.vel_pub.publish(vel_cmd_zero)
