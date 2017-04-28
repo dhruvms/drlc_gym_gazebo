@@ -286,7 +286,7 @@ class DQNAgent:
             # [self.target_q_network.trainable_weights[i].assign(self.q_network.trainable_weights[i]) \
             #     for i in range(len(self.target_q_network.trainable_weights))]
 
-    def fit(self, num_iterations, max_episode_length=250, eval_every_nth=1000, save_model_every_nth=1000, log_loss_every_nth=1000, video_every_nth=20000):
+    def fit(self, num_iterations, max_episode_length=250, eval_every_nth=1000, save_model_every_nth=1000, log_loss_every_nth=1000, video_every_nth=20000, save_replay_mem_every_nth=1e5):
         """Fit your model to the provided environment.
 
         Its a good idea to print out things like loss, average reward,
@@ -415,8 +415,9 @@ class DQNAgent:
                         # self.q_network.save(os.path.join(self.log_dir, 'weights/q_network_{}.h5'.format(str(self.train_iter_ctr).zfill(7))))
                         # output = open(os.path.join(self.log_dir, 'replay_memory/iter_{}.pkl'.format(str(self.train_iter_ctr).zfill(7))), 'wb')
                         self.q_network.save(os.path.join(self.log_dir, 'q_network.h5'))
-                        output = open(os.path.join(self.log_dir, 'mem.pkl'), 'wb')
                         
+                    if not(self.train_iter_ctr%save_replay_mem_every_nth): # this takes a lot of time if big and causes ghost mode
+                        output = open(os.path.join(self.log_dir, 'mem.pkl'), 'wb')
                         pkl.dump(self.replay_memory, output)
                         output.close()
 

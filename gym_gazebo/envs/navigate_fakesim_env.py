@@ -100,7 +100,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		while True:
 			if not self.done: # avoid extraneous checks when it's resetting dji and cylinder pose
 				self.duration_since_step_was_called = time.time() - self.last_time_step_was_called
-				print self.YELLOW + "self.duration_since_step_was_called {:.2f} s".format(self.duration_since_step_was_called) + self.ENDC
+				# print self.YELLOW + "self.duration_since_step_was_called {:.2f} s".format(self.duration_since_step_was_called) + self.ENDC
 				if self.duration_since_step_was_called > self.MAX_DURATION_BETWEEN_STEP_CALLS:
 					print self.BLUE + "Ghost Mode. Step not called for {:.2f} s: sending zero vel. time : {:.2f} ".format(self.duration_since_step_was_called, time.time()) + self.ENDC
 					vel_cmd_zero = Twist()
@@ -202,8 +202,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		else:
 			reward = self.REWARD_AT_CRASH
 
-		# print "min_laser : {:.2f} dist_to_goal : {:.2f} reward_dist_to_goal : {:.2f} action : {:+d} reward : {:+.2f}"\
-		# 	.format(self.min_laser_scan, dist_to_goal, reward_dist_to_goal, action_norm, reward)
+		print "min_laser : {:.2f} dist_to_goal : {:.2f} reward_dist_to_goal : {:.2f} action : {:+d} reward : {:+.2f}"\
+			.format(self.min_laser_scan, dist_to_goal, reward_dist_to_goal, action_norm, reward)
 
 		# print "exiting step()"
 		return self.observation, reward, self.done, {}	
