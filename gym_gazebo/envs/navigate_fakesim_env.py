@@ -21,6 +21,7 @@ from sensor_msgs.msg import LaserScan, Image
 from geometry_msgs.msg import Twist, Point, Pose
 from nav_msgs.msg import Odometry
 import message_filters
+import threading
 
 class GazeboErleCopterNavigateEnvFakeSim(gym.Env): 
 	def __init__(self):
@@ -71,15 +72,41 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.HAVE_DATA = False
 		self.first = True
 		self.last_time_step_was_called = 0.0
-
+		self.duration_since_step_was_called = 0.0
 		# self.get_model_state_proxy = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
 		self.set_model_state_proxy = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
 
 		self.RED = '\033[91m'
-		self.OKBLUE = '\033[94m'
+		self.BLUE = '\033[94m'
 		self.BOLD = '\033[1m'
 		self.ENDC = '\033[0m'        
-		self.LINE = "%s%s##############################################################################%s" % (self.OKBLUE, self.BOLD, self.ENDC)
+		self.LINE = "%s%s##############################################################################%s" % (self.BLUE, self.BOLD, self.ENDC)
+		self.PURPLE = '\033[95m'
+		self.YELLOW = '\033[93m'
+		self.Red = '\033[91m'
+
+		UNDERLINE = '\033[4m'
+		thread = threading.Thread(target=self.get_time_since_step_was_called, args=())
+		thread.daemon = True                            # Daemonize thread
+		thread.start()                                  # Start the execution
+		
+		self.MAX_DURATION_BETWEEN_STEP_CALLS = 0.3
+		self.MAX_NO_LASER_TIME = 0.1
+	
+	# check when was step() called last. this is a background thread. 
+	# todo if dqn.update_policy() is in "control", it should (hopefully) still send a zero vel cmd
+	# ref : http://sebastiandahlgren.se/2014/06/27/running-a-method-as-a-background-thread-in-python/
+	def get_time_since_step_was_called(self):
+		while True:
+			if not self.done: # avoid extraneous checks when it's resetting dji and cylinder pose
+				self.duration_since_step_was_called = time.time() - self.last_time_step_was_called
+				print self.YELLOW + "self.duration_since_step_was_called {:.2f} s".format(self.duration_since_step_was_called) + self.ENDC
+				if self.duration_since_step_was_called > self.MAX_DURATION_BETWEEN_STEP_CALLS:
+					print self.BLUE + "Ghost Mode. Step not called for {:.2f} s: sending zero vel. time : {:.2f} ".format(self.duration_since_step_was_called, time.time()) + self.ENDC
+					vel_cmd_zero = Twist()
+					self.vel_pub.publish(vel_cmd_zero)
+
+			time.sleep(0.5) # this is hardcoded. if it's self.MAX_DURATION_BETWEEN_STEP_CALLS, it didn't work. (?!)
 
 	# checks for bot's pose and sets self.is_terminal to True if it goes outside the forest'
 	def pose_callback(self, msg):
@@ -88,8 +115,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# end episode if out of forest's box
 		if (self.position.x < self.MIN_POSITION_X) or (self.position.x > self.MAX_POSITION_X) or (abs(self.position.y) > self.MAX_POSITION_Y):
 			self.done = True
-			print "went out of range. ending episode"
-			rospy.loginfo("Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
+			# print "went out of range. ending episode"
+			# rospy.loginfo("Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
 
 			# experimental : set dji pose here itself. this can cause a bad callback error sometimes. tocheck
 			# self.reset_dji()
@@ -125,21 +152,6 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# vel_cmd.linear.y = vel_y_body
 		# vel_cmd.linear.z = 0
 
-		# keep on waiting for getting laser data
-		self.HAVE_DATA = False
-		start_time = time.time()
-		while not self.HAVE_DATA:
-			no_laser_time = time.time() - start_time
-			# print no_laser_time #this is ~ 0.01 seconds
-			if no_laser_time > 0.1:
-				str_1 = "Ghost mode for {:.2f} s: sending zero vel".format(no_laser_time)
-				msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
-				print(str(msg))
-				vel_cmd_zero = Twist()
-				self.vel_pub.publish(vel_cmd_zero)
-			# print "step() : self.HAVE_DATA is False!"
-			continue
-
 		vel_cmd.linear.x = speed
 		vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
 		self.vel_pub.publish(vel_cmd)
@@ -159,10 +171,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		while not self.HAVE_DATA:
 			no_laser_time = time.time() - start_time
 			# print no_laser_time #this is ~ 0.01 seconds
-			if no_laser_time > 0.1:
-				str_1 = "Ghost mode for {:.2f} s: sending zero vel".format(no_laser_time)
-				msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
-				print(str(msg))
+			if no_laser_time > self.MAX_NO_LASER_TIME:
+				print self.PURPLE + "Ghost mode :: step () :: no laser data for {:.2f} s: sending zero vel. time : {:.2f}".format(no_laser_time, time.time()) + self.ENDC
 				vel_cmd_zero = Twist()
 				self.vel_pub.publish(vel_cmd_zero)
 			# print "step() : self.HAVE_DATA is False!"
@@ -192,8 +202,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		else:
 			reward = self.REWARD_AT_CRASH
 
-		print "min_laser : {:.2f} dist_to_goal : {:.2f} reward_dist_to_goal : {:.2f} action : {:+d} reward : {:+.2f}"\
-			.format(self.min_laser_scan, dist_to_goal, reward_dist_to_goal, action_norm, reward)
+		# print "min_laser : {:.2f} dist_to_goal : {:.2f} reward_dist_to_goal : {:.2f} action : {:+d} reward : {:+.2f}"\
+		# 	.format(self.min_laser_scan, dist_to_goal, reward_dist_to_goal, action_norm, reward)
 
 		# print "exiting step()"
 		return self.observation, reward, self.done, {}	
