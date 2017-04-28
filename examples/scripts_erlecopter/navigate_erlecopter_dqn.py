@@ -60,12 +60,12 @@ def main():  # noqa: D103
         eval_every_nth = 50000        
 
     if args.resume_dir is not None:
-        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode, 
+        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50, train_freq=4, batch_size=32, mode=args.mode, 
                         resume_dir=args.resume_dir)
     else:
-        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode)
+        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50, train_freq=4, batch_size=32, mode=args.mode)
 
-    agent.fit(num_iterations = int(5e6), max_episode_length=1000, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth)
+    agent.fit(num_iterations = int(5e6), max_episode_length=1000, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=4, video_every_nth=video_every_nth)
 
 if __name__ == '__main__':
     main()

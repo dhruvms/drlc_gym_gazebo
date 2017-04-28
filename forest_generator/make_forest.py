@@ -48,7 +48,7 @@ for i in range(nx):
 		y_tree=y[j]+noise_y
 		positions_x[i,j]=x_tree
 		positions_y[i,j]=y_tree
-		line_to_print="\n      <pose frame=''>"+str(x_tree)+" "+str(y_tree)+" 3 0 -0 0</pose>\n"
+		line_to_print="\n      <pose frame=''>"+str(x_tree)+" "+str(y_tree)+" 5 0 -0 0</pose>\n"
 		target.write(line_to_print)
 		target.write(cil_1)
 

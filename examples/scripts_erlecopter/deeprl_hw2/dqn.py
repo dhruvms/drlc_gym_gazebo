@@ -272,7 +272,7 @@ class DQNAgent:
                     y_targets_all[idx, last_sample.action] = np.float32(last_sample.reward) + self.gamma*q_next[idx, np.argmax(q_current[idx])] 
 
         loss = self.q_network.train_on_batch(current_state_images, np.float32(y_targets_all))
-
+        # print "loss", loss
         with tf.name_scope('summaries'):
             self.tf_log_scaler(tag='train_loss', value=loss, step=self.train_iter_ctr)
 
@@ -374,7 +374,7 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                        str_1 = "time {} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {:.2f}, episode_timesteps : {}, epsilon : {:.4f}".format\
                                 (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
@@ -428,7 +428,7 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time_till_now {} s, iter_ctr {}, self.train_episode_ctr : {}, episode_reward : {}, loss : {}, episode_timesteps : {}, epsilon : {}".format\
+                        str_1 = "time {} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {:.2f}, episode_timesteps : {}, epsilon : {:.4f}".format\
                                 (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
@@ -440,6 +440,7 @@ class DQNAgent:
                         break
 
                     if not(self.train_iter_ctr % self.train_freq):
+                        # print "training"
                         self.update_policy()
 
                 state = next_state
@@ -499,7 +500,7 @@ class DQNAgent:
 
                 if is_terminal or (num_timesteps_in_curr_episode > max_episode_length-1):
                     eval_episode_ctr_valid += 1
-                    str_1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {}, num_timesteps_in_curr_episode {}"\
+                    str_1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {:.2f}, num_timesteps_in_curr_episode {}"\
                             .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
                     msg = "\n%s\n" % (LINE)
                     msg += "%s%s\n" % (BOLD, str_1)
