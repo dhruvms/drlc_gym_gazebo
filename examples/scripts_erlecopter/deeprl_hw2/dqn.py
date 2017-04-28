@@ -374,8 +374,8 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time {} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {:.2f}, episode_timesteps : {}, epsilon : {:.4f}".format\
-                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "time {:.2f} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {}, episode_timesteps : {}, epsilon : {:.4f}".format\
+                                (time_till_now, self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)
@@ -428,8 +428,8 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_reward_per_episode_wrt_iterations', value=total_reward_curr_episode, step=self.train_iter_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_no_of_episodes', value=num_timesteps_in_curr_episode, step=self.train_episode_ctr)
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
-                        str_1 = "time {} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {:.2f}, episode_timesteps : {}, epsilon : {:.4f}".format\
-                                (round(time_till_now,2), self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
+                        str_1 = "time {:.2f} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {}, episode_timesteps : {}, epsilon : {:.4f}".format\
+                                (time_till_now, self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
                         msg = "\n%s\n" % (LINE)
                         msg += "%s%s\n" % (BOLD, str_1)
                         msg += "%s\n" % (LINE)

@@ -63,7 +63,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 
 		self.laser_subscriber = message_filters.Subscriber('/scan', LaserScan)
 		self.image_subscriber = message_filters.Subscriber('/camera/rgb/image_raw', Image)
-		self.synchro = message_filters.ApproximateTimeSynchronizer([self.laser_subscriber, self.image_subscriber], 10, 0.5)
+		self.synchro = message_filters.ApproximateTimeSynchronizer([self.laser_subscriber, self.image_subscriber], 10, 0.05)
 		self.synchro.registerCallback(self.synchro_callback)
 
 		self.observation = None
@@ -185,22 +185,20 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 			model_state.twist = model_twist
 			model_state.reference_frame = 'world' # change to 'world'?
 			rospy.wait_for_service('/gazebo/set_model_state')
-			try:
-				self.set_model_state_proxy(model_state)
-				# rospy.loginfo("DJI position updated. Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
-				# print(self.reset_position.x, self.reset_position.y, self.reset_position.z)
-				# print(self.reset_position.x == self.position.x, self.reset_position.y == self.position.y, self.reset_position.z == self.position.z)
-			except rospy.ServiceException, e:
-				print "Service call failed: %s"%e
+
+			self.set_model_state_proxy(model_state)
+			# rospy.loginfo("DJI position updated. Point Position: [ %f, %f, %f ]"%(self.position.x, self.position.y, self.position.z))
+			# print(self.reset_position.x, self.reset_position.y, self.reset_position.z)
+			# print(self.reset_position.x == self.position.x, self.reset_position.y == self.position.y, self.reset_position.z == self.position.z)
 
 		rospy.loginfo("DJI position updated")
 
 		# recursive to ensure
-		if not (self.reset_position.x == self.position.x) and \
-			  not (self.reset_position.y == self.position.y) and \
-			  not (self.reset_position.z == abs(self.position.z)):
-			  print "reset_dji() : recursion "
-			  self.reset_dji()
+		while not (self.reset_position.x == self.position.x) and \
+			not (self.reset_position.y == self.position.y) and \
+			not (self.reset_position.z == abs(self.position.z)):
+			print "reset_dji() : recursion "
+		 	self.reset_dji()
 		
 	# generate random poses for trees and call set model pose for each tree 
 	def make_a_brave_new_forest(self):
@@ -255,6 +253,13 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 					print "Service call failed: %s"%e
 
 		rospy.loginfo("Cylinder positions updated.")
+		
+		# assert
+		while not (self.reset_position.x == self.position.x) and \
+			not (self.reset_position.y == self.position.y) and \
+			not (self.reset_position.z == abs(self.position.z)):
+			print "reset_forest => reset_dji()"
+			self.reset_dji()
 
 	def _reset(self):
 		if not self.first:
@@ -272,8 +277,14 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 
 			while not self.HAVE_DATA:
 				# print "_reset() :: self.HAVE_DATA is False!"
-			
 				continue
+			# assert
+			while not (self.reset_position.x == self.position.x) and \
+				not (self.reset_position.y == self.position.y) and \
+				not (self.reset_position.z == abs(self.position.z)):
+				print "reset itself() => reset_dji()"
+				self.reset_dji()
+			
 			self.done = False
 
 		self.first = False
