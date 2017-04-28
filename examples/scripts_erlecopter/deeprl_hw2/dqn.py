@@ -312,7 +312,7 @@ class DQNAgent:
           resets. Can help exploration.
         """
         self.compile()
-        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=2e5, num_actions=self.num_actions) # for training
+        self.policy = LinearDecayGreedyEpsilonPolicy(start_value=1., end_value=0.1, num_steps=1e6, num_actions=self.num_actions) # for training
         self.replay_memory = ReplayMemory(max_size=1e6)
         self.log_loss_every_nth = log_loss_every_nth
         random_policy = UniformRandomPolicy(num_actions=self.num_actions) # for burn in 
