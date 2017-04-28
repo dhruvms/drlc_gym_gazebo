@@ -70,9 +70,16 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.laser = None
 		self.HAVE_DATA = False
 		self.first = True
+		self.last_time_step_was_called = 0.0
 
 		# self.get_model_state_proxy = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
 		self.set_model_state_proxy = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+
+		self.RED = '\033[91m'
+		self.OKBLUE = '\033[94m'
+		self.BOLD = '\033[1m'
+		self.ENDC = '\033[0m'        
+		self.LINE = "%s%s##############################################################################%s" % (self.OKBLUE, self.BOLD, self.ENDC)
 
 	# checks for bot's pose and sets self.is_terminal to True if it goes outside the forest'
 	def pose_callback(self, msg):
@@ -93,7 +100,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		cv_image = CvBridge().imgmsg_to_cv2(image, desired_encoding="passthrough")
 		self.observation = np.asarray(cv_image)
 		self.laser = laser
-
+		# print self.laser.header #good for debugging ghost mode. check seq dropped by uncommenting
 		self.HAVE_DATA = True
 
 		self.min_laser_scan = np.min(self.laser.ranges)
@@ -101,6 +108,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 			self.done = True
 
 	def _step(self, action):
+		self.last_time_step_was_called = time.time()
 		vel_cmd = Twist()
 		speed = 5.0
 		delta_theta_deg = 10 # diff of heading (or pseudo-heading) between each action
@@ -117,6 +125,21 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# vel_cmd.linear.y = vel_y_body
 		# vel_cmd.linear.z = 0
 
+		# keep on waiting for getting laser data
+		self.HAVE_DATA = False
+		start_time = time.time()
+		while not self.HAVE_DATA:
+			no_laser_time = time.time() - start_time
+			# print no_laser_time #this is ~ 0.01 seconds
+			if no_laser_time > 0.1:
+				str_1 = "Ghost mode for {:.2f} s: sending zero vel".format(no_laser_time)
+				msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
+				print(str(msg))
+				vel_cmd_zero = Twist()
+				self.vel_pub.publish(vel_cmd_zero)
+			# print "step() : self.HAVE_DATA is False!"
+			continue
+
 		vel_cmd.linear.x = speed
 		vel_cmd.angular.z = action_norm*(math.radians(delta_theta_deg))
 		self.vel_pub.publish(vel_cmd)
@@ -124,15 +147,24 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		# this time will roughly define no of steps per second
 		# can't make it too high (or else it follows one action for too long
 		# nor too low, or else, it does't have enough time to pick up spped and actually move
-		time.sleep(1e-1)
+		# time.sleep(1e-1)
 		
 		# pubish zero after sleeping for a small time to avoid ghost mode bug
-		vel_cmd_zero = Twist()
-		self.vel_pub.publish(vel_cmd_zero)
+		# vel_cmd_zero = Twist()
+		# self.vel_pub.publish(vel_cmd_zero)
 		
 		# keep on waiting for getting laser data
 		self.HAVE_DATA = False
+		start_time = time.time()
 		while not self.HAVE_DATA:
+			no_laser_time = time.time() - start_time
+			# print no_laser_time #this is ~ 0.01 seconds
+			if no_laser_time > 0.1:
+				str_1 = "Ghost mode for {:.2f} s: sending zero vel".format(no_laser_time)
+				msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
+				print(str(msg))
+				vel_cmd_zero = Twist()
+				self.vel_pub.publish(vel_cmd_zero)
 			# print "step() : self.HAVE_DATA is False!"
 			continue
 
@@ -163,6 +195,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		print "min_laser : {:.2f} dist_to_goal : {:.2f} reward_dist_to_goal : {:.2f} action : {:+d} reward : {:+.2f}"\
 			.format(self.min_laser_scan, dist_to_goal, reward_dist_to_goal, action_norm, reward)
 
+		# print "exiting step()"
 		return self.observation, reward, self.done, {}	
 
 	# utility function to set the bot's pose
@@ -197,13 +230,14 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 			# print(self.reset_position.x == self.position.x, self.reset_position.y == self.position.y, self.reset_position.z == self.position.z)
 
 		rospy.loginfo("DJI position updated")
+		# time.sleep(0.1)
 
 		# recursive to ensure
 		while not (self.reset_position.x == self.position.x) and \
 			not (self.reset_position.y == self.position.y) and \
 			not (self.reset_position.z == abs(self.position.z)):
 			print "reset_dji() : recursion "
-		 	self.reset_dji()
+			self.reset_dji()
 		
 	# generate random poses for trees and call set model pose for each tree 
 	def make_a_brave_new_forest(self):
@@ -258,7 +292,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 					print "Service call failed: %s"%e
 
 		rospy.loginfo("Cylinder positions updated.")
-		
+		# time.sleep(0.1)
 		# assert
 		while not (self.reset_position.x == self.position.x) and \
 			not (self.reset_position.y == self.position.y) and \

@@ -440,8 +440,9 @@ class DQNAgent:
                         break
 
                     if not(self.train_iter_ctr % self.train_freq):
-                        # print "training"
+                        # print "update_policy() called"
                         self.update_policy()
+                        # print "update_policy() finished"
 
                 state = next_state
 
