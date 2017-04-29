@@ -405,9 +405,9 @@ class DQNAgent:
                         print "\n\nEvaluating at iter {}".format(self.train_iter_ctr)
                         if not(self.train_iter_ctr%video_every_nth):
                             # self.evaluate(self.train_episode_ctr=20, max_episode_length=max_episode_length, gen_video=True)
-                            self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         else:
-                            self.evaluate(num_episodes=5, max_episode_length=max_episode_length, gen_video=False)
+                            self.evaluate(num_episodes=20, max_episode_length=max_episode_length, gen_video=False)
                         print "Done Evaluating\n\n"
 
                     # save model
