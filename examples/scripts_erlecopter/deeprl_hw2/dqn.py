@@ -71,6 +71,8 @@ class DQNAgent:
                  train_freq,
                  batch_size,
                  mode,
+                 eval_dir = None,
+                 resume_dir= None,
                  log_parent_dir = '/home/vaibhav/madratman/logs/project/dqn'):
 
         self.env_string = env
@@ -85,6 +87,15 @@ class DQNAgent:
 
         self.eval_episode_ctr = 0
         self.preprocessor = preprocessors.PreprocessorSequence()
+        self.eval_dir = eval_dir
+        self.resume_dir = resume_dir
+        self.is_eval = False # eval only mode
+        self.is_resume = False
+
+        if eval_dir is not None:
+            self.is_eval = True
+        if resume_dir is not None:
+            self.is_resume = True
 
         # loggers
         self.qavg_list = np.array([0])
@@ -95,6 +106,13 @@ class DQNAgent:
         self.log_parent_dir = log_parent_dir
         self.make_log_dir() # makes empty dir and logfiles based on current timestamp inside self.log_parent_dir
         self.start_time = timeit.default_timer()
+
+        # printing
+        self.RED = '\033[91m'
+        self.BOLD = '\033[1m'
+        self.ENDC = '\033[0m'        
+        self.LINE = "%s%s##############################################################################%s" % (self.RED, self.BOLD, self.ENDC)
+
 
     def create_model(self):  # noqa: D103
         """Create the Q-network model.
@@ -167,7 +185,15 @@ class DQNAgent:
         
         # set the same weights for both initially
         self.target_q_network.set_weights(self.q_network.get_weights())
-        
+        if self.is_eval:
+            # last_weight_file = sorted(os.listdir(os.path.join(self.log_dir, 'weights')))[-1]
+            weight_file = os.path.join(self.eval_dir, 'q_network.h5')
+            str_1 = "Loading q_net from " + weight_file
+            msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
+            print(str(msg))
+            self.q_network.load_weights(weight_file)
+            # self.target_q_network.load_weights(os.path.join(self.log_dir, 'weights',last_weight_file))
+
         print self.q_network.summary()
 
     def calc_q_values(self, state):
@@ -332,10 +358,6 @@ class DQNAgent:
             while num_timesteps_in_curr_episode < max_episode_length:
                 self.train_iter_ctr+=1 # number of steps overall
                 num_timesteps_in_curr_episode += 1 # number of steps in the current episode
-                RED = '\033[91m'
-                BOLD = '\033[1m'
-                ENDC = '\033[0m'        
-                LINE = "%s%s##############################################################################%s" % (RED, BOLD, ENDC)
 
                 # # logging
                 # if not self.train_iter_ctr % 10:
@@ -376,9 +398,7 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
                         str_1 = "time {:.2f} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {}, episode_timesteps : {}, epsilon : {:.4f}".format\
                                 (time_till_now, self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
-                        msg = "\n%s\n" % (LINE)
-                        msg += "%s%s\n" % (BOLD, str_1)
-                        msg += "%s\n" % (LINE)
+                        msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
                         print(str(msg))
                         num_timesteps_in_curr_episode = 0
                         self.dump_train_episode_reward(total_reward_curr_episode)
@@ -431,9 +451,7 @@ class DQNAgent:
                             self.tf_log_scaler(tag='train_episode_length_wrt_iterations', value=num_timesteps_in_curr_episode, step=self.train_iter_ctr)
                         str_1 = "time {:.2f} s, iter_ctr {}, train_episode_ctr : {}, episode_reward : {:.2f}, loss : {}, episode_timesteps : {}, epsilon : {:.4f}".format\
                                 (time_till_now, self.train_iter_ctr, self.train_episode_ctr, total_reward_curr_episode, self.loss_last, num_timesteps_in_curr_episode, self.policy.epsilon)
-                        msg = "\n%s\n" % (LINE)
-                        msg += "%s%s\n" % (BOLD, str_1)
-                        msg += "%s\n" % (LINE)
+                        msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
                         print(str(msg))
                         num_timesteps_in_curr_episode = 0
                         self.dump_train_episode_reward(total_reward_curr_episode)
@@ -460,6 +478,9 @@ class DQNAgent:
         You can also call the render function here if you want to
         visually inspect your policy.
         """
+        if self.is_eval:
+            self.compile() # load save weights
+
         evaluation_policy = GreedyPolicy()
         eval_preprocessor = preprocessors.PreprocessorSequence()
         # env_valid = gym.make(self.env_string)
@@ -504,9 +525,7 @@ class DQNAgent:
                     eval_episode_ctr_valid += 1
                     str_1 = "Evaluate() : iter_ctr_valid {}, eval_episode_ctr_valid : {}, total_reward_curr_episode : {:.2f}, num_timesteps_in_curr_episode {}"\
                             .format(iter_ctr_valid, eval_episode_ctr_valid, total_reward_curr_episode, num_timesteps_in_curr_episode)
-                    msg = "\n%s\n" % (LINE)
-                    msg += "%s%s\n" % (BOLD, str_1)
-                    msg += "%s\n" % (LINE)
+                    msg = "\n%s\n" % (self.LINE) + "%s%s\n" % (self.BOLD, str_1) + "%s\n" % (self.LINE)
                     print(str(msg))
 
                     total_reward_all_episodes.append(total_reward_curr_episode)

@@ -24,6 +24,7 @@ def main():  # noqa: D103
     parser.add_argument('--mode', default='vanilla', type=str, help='vanilla or double dqn')
     parser.add_argument('--question', default='deep', type=str, help='q2, q3, q4, deep, q7, eval_table')
     parser.add_argument('--resume_dir', default=None, type=str, help='resume dir')
+    parser.add_argument('--eval_dir', default=None, type=str, help='eval')
 
     args = parser.parse_args()
     print " MODE IS", args.mode
@@ -63,10 +64,19 @@ def main():  # noqa: D103
         agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode, 
                         resume_dir=args.resume_dir)
     else:
-        agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode)
+        if args.eval_dir is not None:
+            agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode, eval_dir=args.eval_dir)
+        else:
+            agent = DQNAgent(env=args.env, gamma=0.99, target_update_freq=10000, num_burn_in=50000, train_freq=4, batch_size=32, mode=args.mode)
 
-    agent.fit(num_iterations = int(5e6), max_episode_length=1000, save_model_every_nth=1000, eval_every_nth=eval_every_nth, log_loss_every_nth=4, video_every_nth=video_every_nth, 
-              save_replay_mem_every_nth=1e5)
+    print "args.evaluate", 
+
+    if args.eval_dir is not None:
+        agent.evaluate(num_episodes=50, max_episode_length=2500) 
+    else:
+        agent.fit(num_iterations = int(5e6), max_episode_length=2500, save_model_every_nth=5000, eval_every_nth=eval_every_nth, log_loss_every_nth=1000, video_every_nth=video_every_nth, 
+                  save_replay_mem_every_nth=3e6)
+        
 
 if __name__ == '__main__':
     main()

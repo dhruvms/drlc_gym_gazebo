@@ -32,7 +32,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.position = Point(self.reset_x, self.reset_y, self.reset_z) # initialize to same coz reset is called before pose callback
 
 		# dem MDP rewards tho
-		self.MIN_LASER_DEFINING_CRASH = 1.0
+		self.MIN_LASER_DEFINING_CRASH = 0.75
 		self.MIN_LASER_DEFINING_NEGATIVE_REWARD = 2.0
 		self.REWARD_AT_LASER_DEFINING_NEGATIVE_REWARD = 0.0
 		self.REWARD_AT_LASER_JUST_BEFORE_CRASH = -5.0
@@ -49,23 +49,25 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		print "Initializing environment. Wait 5 seconds"
 		rospy.sleep(5)
 		print "############### DONE ###############"
+
 		self.num_actions = 9
 		self.action_space = spaces.Discrete(self.num_actions)
 		self.reward_range = (-np.inf, np.inf)
-		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
-		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=1)
-		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
 		self.previous_min_laser_scan = 0.0
 		self.done = False
-		# the following are absolutes
-		self.MAX_POSITION_X = 90.0
-		self.MIN_POSITION_X = 0.0
-		self.MAX_POSITION_Y = 30.0
 
+		### publishers, subscribers, services ###
 		self.laser_subscriber = message_filters.Subscriber('/scan', LaserScan)
 		self.image_subscriber = message_filters.Subscriber('/camera/rgb/image_raw', Image)
+		self.pose_subscriber = rospy.Subscriber('/dji_sim/odometry', Odometry, self.pose_callback)
 		self.synchro = message_filters.ApproximateTimeSynchronizer([self.laser_subscriber, self.image_subscriber], 10, 0.05)
 		self.synchro.registerCallback(self.synchro_callback)
+
+		self.vel_pub = rospy.Publisher('/dji_sim/target_velocity', Twist, queue_size=1)
+
+		self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_world', Empty)
+		self.set_model_state_proxy = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+		# self.get_model_state_proxy = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
 
 		self.observation = None
 		self.laser = None
@@ -73,9 +75,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.first = True
 		self.last_time_step_was_called = 0.0
 		self.duration_since_step_was_called = 0.0
-		# self.get_model_state_proxy = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
-		self.set_model_state_proxy = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
 
+		### pretty printing is pretty ###
 		self.RED = '\033[91m'
 		self.BLUE = '\033[94m'
 		self.BOLD = '\033[1m'
@@ -84,15 +85,26 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.PURPLE = '\033[95m'
 		self.YELLOW = '\033[93m'
 		self.Red = '\033[91m'
+		self.UNDERLINE = '\033[4m'
 
-		UNDERLINE = '\033[4m'
+		### background thread to track when the last time step was called. ###
+		self.MAX_DURATION_BETWEEN_STEP_CALLS = 0.3
+		self.MAX_NO_LASER_TIME = 0.1
 		thread = threading.Thread(target=self.get_time_since_step_was_called, args=())
 		thread.daemon = True                            # Daemonize thread
 		thread.start()                                  # Start the execution
-		
-		self.MAX_DURATION_BETWEEN_STEP_CALLS = 0.3
-		self.MAX_NO_LASER_TIME = 0.1
-	
+
+		### environment variables, literally ###
+		self.num_trees_x = 15
+		self.spacing_trees_x = 6
+		self.num_trees_y = 10
+		self.spacing_trees_y = 5
+
+		### reset conditions. ensure that drone is withing the forest environment ###
+		self.MAX_POSITION_X = self.num_trees_x * self.spacing_trees_x
+		self.MIN_POSITION_X = -2.0
+		self.MAX_POSITION_Y = 0.5*(self.num_trees_y * self.spacing_trees_y)
+
 	# check when was step() called last. this is a background thread. 
 	# todo if dqn.update_policy() is in "control", it should (hopefully) still send a zero vel cmd
 	# ref : http://sebastiandahlgren.se/2014/06/27/running-a-method-as-a-background-thread-in-python/
@@ -131,6 +143,8 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		self.HAVE_DATA = True
 
 		self.min_laser_scan = np.min(self.laser.ranges)
+		if self.min_laser_scan == float('Inf'):
+			self.min_laser_scan = 20.0
 		if self.min_laser_scan < self.MIN_LASER_DEFINING_CRASH:
 			self.done = True
 
@@ -143,7 +157,7 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 		#### action set with varying heading ####
 		# 4 is forward, 0-3 are to left, 5-8 are right. all separated by 10 deg each.
 		action_norm = action - ((self.num_actions-1)/2)
-		# 0 is forward in action_norm. negatives are left
+		# 0 is forward in action_norm. positives are left
 
 		#### action set with same heading ####
 		# vel_x_body = speed*math.cos(action_norm*(math.radians(delta_theta_deg)))
@@ -252,23 +266,19 @@ class GazeboErleCopterNavigateEnvFakeSim(gym.Env):
 	# generate random poses for trees and call set model pose for each tree 
 	def make_a_brave_new_forest(self):
 		# generate random samples
-		nx = 15
-		spacing_x = 6
-		random_interval_x = spacing_x/3
-		offset_x = 5
+		random_interval_x = self.spacing_trees_x/3
+		offset_x = 7.5
 
-		ny = 10
-		spacing_y = 6
-		random_interval_y = spacing_y
-		offset_y = -int(ny*spacing_y/2)+3
+		random_interval_y = self.spacing_trees_y
+		offset_y = -int(self.num_trees_y*self.spacing_trees_y/2)+3
 
-		x = np.linspace(offset_x, offset_x+(nx-1)*spacing_x, nx)
-		y = np.linspace(offset_y, offset_y+(ny-1)*spacing_y, ny)
+		x = np.linspace(offset_x, offset_x+(self.num_trees_x-1)*self.spacing_trees_x, self.num_trees_x)
+		y = np.linspace(offset_y, offset_y+(self.num_trees_y-1)*self.spacing_trees_y, self.num_trees_y)
 
 		counter=0
 		np.random.seed() #use seed from sys time to build new env on reset
-		for i in range(nx):
-			for j in range(ny):
+		for i in range(self.num_trees_x):
+			for j in range(self.num_trees_y):
 				name='unit_cylinder_'+str(counter)
 
 				counter+=1
